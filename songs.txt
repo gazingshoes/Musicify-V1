@@ -1,0 +1,3 @@
+TITLE|ARTIST|DURATION|GENRE|FILEPATH
+Secret Society|Title Fight|186|Hardcore|C:\Users\rajendra\Documents\Musicify\Title Fight - Secret Society (Official Audio) - SideOneDummy.mp3
+Like A Ritual|Title Fight|188|Hardcore|C:\Users\rajendra\Documents\Musicify\Title Fight - Like A Ritual (Official Audio) - SideOneDummy.mp3
