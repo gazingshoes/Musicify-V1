@@ -1,10 +1,10 @@
-# Project Pemdas - Musicify
+# Project Pemdas - Musicify V2
 
-Musicify is a simple terminal music player, built entirely using Python!
+Now with a GUI! Made using QTDesigner (pySide6)
 
 ## How to Use
 
-Run `main.py` and follow the instructions in the Main Menu.
+Run `gui_main.py` and follow the instructions in the Main Menu.
 
 There's already a provided list of songs in `songs.txt`. You can:
 * Edit, add, or remove songs directly in `songs.txt` (before running the program).
