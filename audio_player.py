@@ -1,20 +1,12 @@
 """
-Audio Player Module (Pygame Version)
-Updated with Shuffle functionality.
+Audio Player Module (Tkinter Version)
+Fixed: Prev button logic (Restart if > 10s, Prev if < 10s).
 """
-
 import pygame
 import random
-from PySide6.QtCore import QObject, Signal
 
-class AudioPlayer(QObject):
-    # Signals
-    current_song_changed = Signal(object) 
-    queue_changed = Signal(list)
-    playback_state_changed = Signal(bool)
-
+class AudioPlayer:
     def __init__(self):
-        super().__init__()
         try:
             pygame.mixer.init(frequency=44100) 
         except Exception as e:
@@ -27,54 +19,50 @@ class AudioPlayer(QObject):
         self.is_paused = False
         self.current_pos_offset = 0.0 
         
-        self.SONG_END = pygame.USEREVENT + 1
-        pygame.mixer.music.set_endevent(self.SONG_END)
+        # Callbacks
+        self.on_song_changed = None 
+        self.on_queue_changed = None
+        self.on_playback_state_changed = None
 
     def play_now(self, song):
-        """Clears queue and plays a single song immediately."""
         self.stop()
         self.queue = []
         self.queue.append(song)
         self.play_next_from_queue()
-        self.queue_changed.emit(self.queue)
+        if self.on_queue_changed: self.on_queue_changed(self.queue)
 
     def play_list(self, songs, start_index=0):
-        """
-        Clears queue, adds a LIST of songs, and plays from start_index.
-        This is used for "Play Album".
-        """
         self.stop()
-        self.queue = list(songs) # Make a copy
-        
-        # If start_index is > 0, we need to pop the first few
-        # But usually for "Play Album", we start at 0.
-        # If we want to play track 1 immediately:
+        self.queue = list(songs)
         if self.queue:
             self.play_next_from_queue()
-            
-        self.queue_changed.emit(self.queue)
+        if self.on_queue_changed: self.on_queue_changed(self.queue)
 
     def add_to_queue(self, song):
         self.queue.append(song)
-        self.queue_changed.emit(self.queue)
+        if self.on_queue_changed: self.on_queue_changed(self.queue)
         if not self.is_playing and not self.is_paused:
             self.play_next_from_queue()
 
+    def clear_queue(self):
+        self.queue = []
+        if self.on_queue_changed: self.on_queue_changed(self.queue)
+
     def shuffle_queue(self):
-        """Shuffles the current queue."""
         random.shuffle(self.queue)
-        self.queue_changed.emit(self.queue)
+        if self.on_queue_changed: self.on_queue_changed(self.queue)
 
     def check_music_status(self):
-        for event in pygame.event.get():
-            if event.type == self.SONG_END:
-                print("Song finished.")
+        if self.is_playing and not self.is_paused:
+            if not pygame.mixer.music.get_busy():
+                print("Song finished naturally.")
                 self.is_playing = False
                 self.is_paused = False
                 if self.current_song:
                     self.history.append(self.current_song)
                 self.current_song = None
-                self.current_song_changed.emit(None)
+                
+                if self.on_song_changed: self.on_song_changed(None)
                 self.play_next_from_queue()
 
     def play_next_from_queue(self):
@@ -92,12 +80,13 @@ class AudioPlayer(QObject):
             self.is_playing = True
             self.is_paused = False
             
-            self.current_song_changed.emit(self.current_song)
-            self.queue_changed.emit(self.queue)
-            self.playback_state_changed.emit(True)
+            if self.on_song_changed: self.on_song_changed(self.current_song)
+            if self.on_queue_changed: self.on_queue_changed(self.queue)
+            if self.on_playback_state_changed: self.on_playback_state_changed(True)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error playing file: {e}")
             self.is_playing = False
+            self.play_next_from_queue()
 
     def toggle_playback(self):
         if not self.current_song: return
@@ -105,12 +94,12 @@ class AudioPlayer(QObject):
             pygame.mixer.music.unpause()
             self.is_paused = False
             self.is_playing = True
-            self.playback_state_changed.emit(True)
+            if self.on_playback_state_changed: self.on_playback_state_changed(True)
         elif self.is_playing:
             pygame.mixer.music.pause()
             self.is_paused = True
             self.is_playing = False
-            self.playback_state_changed.emit(False)
+            if self.on_playback_state_changed: self.on_playback_state_changed(False)
 
     def seek(self, seconds):
         if self.current_song:
@@ -119,15 +108,18 @@ class AudioPlayer(QObject):
                 self.current_pos_offset = seconds
                 self.is_playing = True
                 self.is_paused = False
-                self.playback_state_changed.emit(True)
+                if self.on_playback_state_changed: self.on_playback_state_changed(True)
             except Exception as e:
                 print(f"Seek error: {e}")
 
     def get_current_position(self):
         if not self.current_song: return 0
-        pygame_pos_seconds = pygame.mixer.music.get_pos() / 1000.0
-        if pygame_pos_seconds < 0: return self.current_pos_offset
-        return self.current_pos_offset + pygame_pos_seconds
+        try:
+            pygame_pos_seconds = pygame.mixer.music.get_pos() / 1000.0
+            if pygame_pos_seconds < 0: return self.current_pos_offset
+            return self.current_pos_offset + pygame_pos_seconds
+        except:
+            return 0
 
     def skip_to_next(self):
         self.stop()
@@ -136,17 +128,23 @@ class AudioPlayer(QObject):
         self.play_next_from_queue()
 
     def play_previous_song(self):
-        if len(self.history) == 0: return
-        self.stop()
-        if self.current_song: self.queue.insert(0, self.current_song)
-        self.current_song = None
-        prev_song = self.history.pop()
-        self.queue.insert(0, prev_song)
-        self.play_next_from_queue()
+        # --- LOGIC FIX ---
+        # If playing > 10s: Restart
+        # Else: Go to previous song
+        if self.is_playing and self.get_current_position() > 10.0:
+            self.seek(0.0)
+        else:
+            if len(self.history) == 0: return
+            self.stop()
+            if self.current_song: self.queue.insert(0, self.current_song)
+            self.current_song = None
+            prev_song = self.history.pop()
+            self.queue.insert(0, prev_song)
+            self.play_next_from_queue()
 
     def stop(self):
         pygame.mixer.music.stop()
         self.is_playing = False
         self.is_paused = False
         self.current_pos_offset = 0.0
-        self.playback_state_changed.emit(False)
+        if self.on_playback_state_changed: self.on_playback_state_changed(False)

@@ -1,476 +1,510 @@
 """
-GUI Main Program (Album Play/Shuffle Edition)
+GUI Main Program (Tkinter Version)
+FINAL REPAIR V15:
+1. SEPARATORS RESTORED: Sidebar, Content, and Queue are now separate panels with gaps.
+2. CANVAS HEADER BUTTONS: Play/Shuffle are transparent (drawn on canvas).
+3. BLUE THEME: Kept the blue color palette while using the panel layout.
 """
-import sys
+import tkinter as tk
+from tkinter import ttk, filedialog
 import os
-import pygame 
+import pygame
 import random
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QListWidget, QPushButton, QLabel, QFrame, QTableWidget, QTableWidgetItem, 
-    QHeaderView, QSlider, QAbstractItemView, QStackedWidget, QLineEdit, 
-    QDialog, QFormLayout, QFileDialog, QScrollArea, QGridLayout,
-    QListWidgetItem
-)
-from PySide6.QtCore import Qt, QTimer, QSize
-from PySide6.QtGui import QColor, QBrush, QIcon, QPixmap
+from PIL import Image, ImageTk, ImageDraw, ImageOps
+import ctypes
+
+# High DPI Fix
+try: ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except: pass
 
 from music_library import MusicLibrary, _format_duration
 from player import (load_songs_from_file, save_songs_to_file)
 from audio_player import AudioPlayer
 
-# --- Dialog (Unchanged) ---
-class AddSongDialog(QDialog):
-    def __init__(self, parent=None):
+# --- GENTLE BLUE THEME COLORS ---
+ROOT_BG = "#090E12"         # Dark gap color
+SIDEBAR_COLOR = "#141E26"   # Panel Color
+BG_COLOR = "#141E26"        # Main Content Color
+PLAYER_BG = "#0F171E"       # Bottom Player
+TEXT_COLOR = "#B0C0D0"
+ACCENT_COLOR = "#88CCF1"
+WHITE = "#FFFFFF"
+HOVER_COLOR = "#1E2A36"
+SCROLLBAR_BG = "#1E2A36"
+QUEUE_BG_1 = "#141E26"
+QUEUE_BG_2 = "#18222D" 
+SEPARATOR_COLOR = "#3E3E3E"
+
+# --- CONFIG ---
+COL_ART_WIDTH = 60
+COL_ALBUM_WIDTH = 200
+COL_DUR_WIDTH = 80
+
+# --- UTILS ---
+def create_gradient(width, height, color1, color2):
+    base = Image.new('RGB', (width, height), color1)
+    top = Image.new('RGB', (width, height), color2)
+    mask = Image.new('L', (width, height))
+    mask_data = []
+    for y in range(height):
+        mask_data.extend([int(255 * (y / height))] * width)
+    mask.putdata(mask_data)
+    top.paste(base, (0, 0), mask)
+    return ImageTk.PhotoImage(top)
+
+def make_round_image(image_path, size, radius=10):
+    try:
+        if not os.path.exists(image_path): return None
+        img = Image.open(image_path).resize(size, Image.Resampling.LANCZOS)
+        mask = Image.new("L", size, 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle((0, 0) + size, radius=radius, fill=255)
+        output = ImageOps.fit(img, mask.size, centering=(0.5, 0.5))
+        output.putalpha(mask)
+        return ImageTk.PhotoImage(output)
+    except: return None
+
+# --- CUSTOM WIDGETS ---
+
+class ModernSlider(tk.Canvas):
+    def __init__(self, master, width=300, height=50, command=None, **kwargs):
+        super().__init__(master, width=width, height=height, bg=PLAYER_BG, highlightthickness=0, **kwargs)
+        self.command = command
+        self.value = 0.0
+        self.max_value = 100.0
+        self.width = width
+        self.height = height
+        self.padding = 20 
+        self.is_hovering = False
+        self.is_dragging = False
+        
+        cy = height / 2
+        self.create_line(self.padding, cy, width-self.padding, cy, fill="#2C3E50", width=4, capstyle="round", tags="bg")
+        self.create_line(self.padding, cy, self.padding, cy, fill=ACCENT_COLOR, width=4, capstyle="round", tags="fill")
+        self.create_oval(0, 0, 0, 0, fill=WHITE, outline=PLAYER_BG, tags="handle", state="hidden")
+        
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.bind("<ButtonRelease-1>", self._on_release)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Configure>", self._resize)
+
+    def _resize(self, event):
+        self.width = event.width
+        cy = self.height / 2
+        self.coords("bg", self.padding, cy, self.width-self.padding, cy)
+        self.update_graphics()
+
+    def _move_to(self, x):
+        x = max(self.padding, min(x, self.width - self.padding))
+        ratio = (x - self.padding) / (self.width - (2 * self.padding))
+        self.value = ratio * self.max_value
+        self.update_graphics()
+        if self.command: self.command(self.value)
+
+    def update_graphics(self):
+        usable = self.width - (2 * self.padding)
+        ratio = self.value / self.max_value if self.max_value > 0 else 0
+        x = self.padding + (ratio * usable)
+        cy = self.height / 2
+        self.coords("fill", self.padding, cy, x, cy)
+        r = 7 
+        self.coords("handle", x-r, cy-r, x+r, cy+r)
+        if self.is_hovering or self.is_dragging: self.itemconfigure("handle", state="normal")
+        else: self.itemconfigure("handle", state="hidden")
+
+    def _on_click(self, event): self.is_dragging = True; self._move_to(event.x)
+    def _on_drag(self, event): self.is_dragging = True; self._move_to(event.x)
+    def _on_release(self, event): self.is_dragging = False; self.update_graphics()
+    def _on_enter(self, event): self.is_hovering = True; self.update_graphics()
+    def _on_leave(self, event): self.is_hovering = False; self.update_graphics()
+    def set_value(self, val):
+        if not self.is_dragging: self.value = val; self.update_graphics()
+    def config_range(self, max_val): self.max_value = max_val
+
+class ModernScrollbar(tk.Canvas):
+    def __init__(self, master, command=None, bg_color=BG_COLOR, **kwargs):
+        super().__init__(master, width=8, bg=bg_color, highlightthickness=0, **kwargs)
+        self.command = command
+        self.create_rectangle(0, 0, 8, 0, fill="#38444D", outline="", tags="thumb")
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<B1-Motion>", self._on_drag)
+        self.y_top = 0.0; self.y_bottom = 1.0
+
+    def set(self, first, last):
+        self.y_top = float(first); self.y_bottom = float(last); self.update_graphics()
+
+    def update_graphics(self):
+        h = self.winfo_height(); top = self.y_top * h; bot = self.y_bottom * h
+        if bot - top < 20: bot = top + 20
+        self.coords("thumb", 0, top, 8, bot)
+
+    def _on_click(self, event):
+        h = self.winfo_height(); y = event.y / h
+        if self.command: self.command("moveto", y)
+    def _on_drag(self, event): self._on_click(event)
+
+class AddSongDialog(tk.Toplevel):
+    def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Add New Song")
-        self.resize(450, 400)
-        self.setStyleSheet("""
-            QDialog { background-color: #192734; color: white; font-family: 'Segoe UI'; }
-            QLabel { font-weight: bold; font-size: 13px; color: #B0C0D0; }
-            QLineEdit { background-color: #22303C; border: 1px solid #38444D; border-radius: 4px; padding: 6px; color: white; }
-            QPushButton { background-color: #2C3E50; color: #B0C0D0; border: none; padding: 6px 12px; border-radius: 4px; }
-            QPushButton:hover { background-color: #38444D; color: white; }
-        """)
-        layout = QFormLayout(self)
-        layout.setSpacing(15)
+        self.title("Add New Song")
+        self.geometry("450x500")
+        self.configure(bg=SIDEBAR_COLOR)
         
-        self.title_edit = QLineEdit()
-        self.artist_edit = QLineEdit()
-        self.album_edit = QLineEdit()
-        self.track_edit = QLineEdit()
-        self.genre_edit = QLineEdit()
-        self.duration_edit = QLineEdit()
-        self.file_path_edit = QLineEdit()
-        self.img_path_edit = QLineEdit()
+        fields = ["Audio File", "Title", "Artist", "Album", "Track #", "Genre", "Duration (s)", "Album Art"]
+        self.entries = {}
+        for i, field in enumerate(fields):
+            lbl = tk.Label(self, text=field + ":", bg=SIDEBAR_COLOR, fg=TEXT_COLOR, font=("Segoe UI", 10, "bold"))
+            lbl.grid(row=i, column=0, padx=15, pady=8, sticky="w")
+            entry = tk.Entry(self, bg="#22303C", fg=WHITE, insertbackground="white", relief="flat")
+            entry.grid(row=i, column=1, padx=15, pady=8, sticky="ew")
+            self.entries[field] = entry
+            if "File" in field or "Art" in field:
+                btn = tk.Button(self, text="...", command=lambda f=field: self.browse(f), bg="#2C3E50", fg=TEXT_COLOR, relief="flat", width=3)
+                btn.grid(row=i, column=2, padx=5)
+        self.grid_columnconfigure(1, weight=1)
+        tk.Button(self, text="Save Song", command=self.save, bg=ACCENT_COLOR, fg="black", font=("Segoe UI", 11, "bold"), relief="flat", cursor="hand2").grid(row=len(fields), column=1, pady=20, sticky="ew")
+
+    def browse(self, field):
+        ftypes = [("Audio", "*.mp3 *.wav")] if "Audio" in field else [("Images", "*.png *.jpg")]
+        f = filedialog.askopenfilename(filetypes=ftypes)
+        if f:
+            self.entries[field].delete(0, tk.END); self.entries[field].insert(0, f)
+            if "Audio" in field:
+                try:
+                    snd = pygame.mixer.Sound(f)
+                    self.entries["Duration (s)"].delete(0, tk.END); self.entries["Duration (s)"].insert(0, str(int(snd.get_length())))
+                    if not self.entries["Title"].get(): self.entries["Title"].insert(0, os.path.splitext(os.path.basename(f))[0])
+                except: pass
+
+    def save(self):
+        self.master.library.add_song(
+            self.entries["Title"].get(), self.entries["Artist"].get(), self.entries["Album"].get(),
+            int(self.entries["Track #"].get() or 0), int(self.entries["Duration (s)"].get() or 0),
+            self.entries["Genre"].get(), self.entries["Audio File"].get(), self.entries["Album Art"].get()
+        )
+        save_songs_to_file(self.master.library)
+        self.master.show_all_songs_view()
+        self.destroy()
+
+class ScrollableFrame(tk.Frame):
+    def __init__(self, container, bg_color=BG_COLOR, *args, **kwargs):
+        super().__init__(container, *args, **kwargs)
+        self.configure(bg=bg_color)
+        self.canvas = tk.Canvas(self, bg=bg_color, highlightthickness=0)
+        self.scrollbar = ModernScrollbar(container, command=self.canvas.yview, bg_color=bg_color)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=bg_color)
+        self.scrollable_frame.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfig(self.frame_window, width=e.width))
+        self.frame_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
         
-        self.btn_browse_file = QPushButton("Browse...")
-        self.btn_browse_file.clicked.connect(self.browse_audio)
-        self.btn_browse_img = QPushButton("Browse...")
-        self.btn_browse_img.clicked.connect(self.browse_img)
-        
-        layout.addRow("Audio File:", self.create_file_row(self.file_path_edit, self.btn_browse_file))
-        layout.addRow("Title:", self.title_edit)
-        layout.addRow("Artist:", self.artist_edit)
-        layout.addRow("Album:", self.album_edit)
-        layout.addRow("Track #:", self.track_edit)
-        layout.addRow("Genre:", self.genre_edit)
-        layout.addRow("Duration (s):", self.duration_edit)
-        layout.addRow("Album Art:", self.create_file_row(self.img_path_edit, self.btn_browse_img))
-        
-        self.btn_save = QPushButton("Save Song")
-        self.btn_save.setStyleSheet("background-color: #1db954; color: #000000; font-weight: bold; padding: 10px;")
-        self.btn_save.clicked.connect(self.accept)
-        layout.addRow(self.btn_save)
+        # Scrollbar packed in parent, canvas packed here
+        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
-    def create_file_row(self, line_edit, button):
-        w = QWidget(); l = QHBoxLayout(w); l.setContentsMargins(0,0,0,0)
-        l.addWidget(line_edit); l.addWidget(button); return w
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        if self.scrollable_frame.winfo_reqheight() <= self.canvas.winfo_height():
+            self.canvas.unbind_all("<MouseWheel>")
+        else:
+            self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
-    def browse_audio(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Select Audio", "", "Audio Files (*.mp3 *.wav)")
-        if f: 
-            self.file_path_edit.setText(f)
-            try:
-                if not self.title_edit.text():
-                    filename = os.path.splitext(os.path.basename(f))[0]
-                    parts = filename.split(' ', 1)
-                    if len(parts) > 1 and parts[0].isdigit():
-                        self.track_edit.setText(parts[0])
-                        self.title_edit.setText(parts[1])
-                    else:
-                        self.title_edit.setText(filename)
-                sound = pygame.mixer.Sound(f)
-                self.duration_edit.setText(str(int(sound.get_length())))
-            except: pass
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
-    def browse_img(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Select Art", "", "Images (*.png *.jpg)")
-        if f: self.img_path_edit.setText(f)
-
-    def get_data(self):
-        return (self.title_edit.text(), self.artist_edit.text(), self.album_edit.text(), self.track_edit.text(), self.duration_edit.text(), self.genre_edit.text(), self.file_path_edit.text(), self.img_path_edit.text())
-
-class MainWindow(QMainWindow):
-    def __init__(self, library, player):
+class MusicifyApp(tk.Tk):
+    def __init__(self):
         super().__init__()
-        self.library = library
-        self.player = player
-        self.is_dragging_slider = False 
-        self.current_view_songs = [] # Track songs currently in the table for Play/Shuffle buttons
+        self.title("Musicify")
+        self.geometry("1200x800")
+        # ROOT BACKGROUND IS THE GAP COLOR
+        self.configure(bg=ROOT_BG)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
         
-        self.setWindowTitle("Musicify")
-        self.resize(1200, 800)
+        self.library = MusicLibrary(); load_songs_from_file(self.library)
+        self.player = AudioPlayer()
+        self.player.on_song_changed = self.update_now_playing_ui
+        self.player.on_queue_changed = self.update_queue_ui
+        self.player.on_playback_state_changed = self.update_play_icon
+        
+        self.current_view_songs = []
+        self.image_refs = {} 
+        self.grad_img = None 
 
         self.setup_ui()
-        self.apply_gentle_blue_theme()
-        self.connect_signals()
-        
         self.show_all_songs_view()
-        self.refresh_album_view()
-        
-        self.playback_timer = QTimer(self)
-        self.playback_timer.timeout.connect(self.update_ui_timer) 
-        self.playback_timer.start(100) 
+        self.after(100, self.update_progress)
+
+    def load_icon(self, path, size, rounded=False):
+        if rounded: return make_round_image(path, size, radius=5)
+        try:
+            if not os.path.exists(path): return None
+            img = Image.open(path).resize(size, Image.Resampling.LANCZOS)
+            return ImageTk.PhotoImage(img)
+        except: return None
+
+    def _configure_grid_columns(self, frame):
+        frame.grid_columnconfigure(0, minsize=60)   
+        frame.grid_columnconfigure(1, weight=1)     
+        frame.grid_columnconfigure(2, minsize=200)  
+        frame.grid_columnconfigure(3, minsize=80)   
 
     def setup_ui(self):
-        self.main_container = QWidget()
-        self.setCentralWidget(self.main_container)
-        self.main_layout = QVBoxLayout(self.main_container)
-        self.main_layout.setContentsMargins(0, 0, 0, 0); self.main_layout.setSpacing(0)
+        # 1. BOTTOM PLAYER (Reserves space at bottom)
+        self.setup_bottom_player()
 
-        self.middle_frame = QWidget()
-        self.middle_layout = QHBoxLayout(self.middle_frame)
-        self.middle_layout.setContentsMargins(10, 10, 10, 0); self.middle_layout.setSpacing(10)
-
-        self.setup_left_sidebar()
-        self.setup_center_content()
-        self.setup_right_sidebar()
-
-        self.middle_layout.addWidget(self.left_sidebar, 20)
-        self.middle_layout.addWidget(self.center_stack, 60)
-        self.middle_layout.addWidget(self.right_sidebar, 20)
-
-        self.setup_bottom_bar()
-        self.main_layout.addWidget(self.middle_frame)
-        self.main_layout.addWidget(self.bottom_bar)
-
-    def setup_left_sidebar(self):
-        self.left_sidebar = QFrame()
-        self.left_sidebar.setObjectName("Sidebar")
-        layout = QVBoxLayout(self.left_sidebar)
-        layout.setContentsMargins(15, 20, 15, 20); layout.setSpacing(10)
+        # 2. MAIN CONTAINER (Fills remaining space)
+        # This frame uses ROOT_BG to create the "gaps" between the panels
+        main = tk.Frame(self, bg=ROOT_BG)
+        main.pack(side="top", fill="both", expand=True)
         
-        self.btn_library = QPushButton("All Songs")
-        self.btn_albums = QPushButton("Albums")
-        self.btn_add_song = QPushButton("+ Add New Song")
+        # --- 3. PANELS WITH PADDING (Gaps) ---
         
-        layout.addWidget(self.btn_library); layout.addWidget(self.btn_albums)
-        layout.addStretch(); layout.addWidget(self.btn_add_song)
-
-    def setup_center_content(self):
-        self.center_stack = QStackedWidget()
+        # Left Sidebar
+        sidebar = tk.Frame(main, bg=SIDEBAR_COLOR, width=220)
+        sidebar.pack(side="left", fill="y", padx=(0, 8), pady=8); sidebar.pack_propagate(False)
         
-        # --- Page 1: Library (Table View) ---
-        self.page_library = QFrame()
-        self.page_library.setObjectName("CenterPanel")
-        lib_layout = QVBoxLayout(self.page_library)
-        lib_layout.setContentsMargins(0, 0, 0, 0)
+        self.btn_all = tk.Button(sidebar, text="All Songs", command=self.show_all_songs_view, bg=SIDEBAR_COLOR, fg=WHITE, font=("Segoe UI", 12, "bold"), bd=0, activebackground=HOVER_COLOR, activeforeground=WHITE, anchor="w", padx=20)
+        self.btn_all.pack(fill="x", pady=(30, 5))
+        self.btn_alb = tk.Button(sidebar, text="Albums", command=self.show_albums_view, bg=SIDEBAR_COLOR, fg=TEXT_COLOR, font=("Segoe UI", 12, "bold"), bd=0, activebackground=HOVER_COLOR, activeforeground=WHITE, anchor="w", padx=20)
+        self.btn_alb.pack(fill="x", pady=5)
+        tk.Button(sidebar, text="+ Add New Song", command=lambda: AddSongDialog(self), bg=SIDEBAR_COLOR, fg=ACCENT_COLOR, font=("Segoe UI", 12, "bold"), bd=0, activebackground=HOVER_COLOR, activeforeground=WHITE, anchor="w", padx=20).pack(side="bottom", fill="x", pady=30)
 
-        # Header
-        self.header_frame = QFrame()
-        self.header_frame.setObjectName("HeaderFrame")
-        self.header_frame.setFixedHeight(140) # Taller for buttons
-        header_layout = QVBoxLayout(self.header_frame)
-        header_layout.setContentsMargins(20, 20, 20, 15)
+        # Right Sidebar
+        rightbar = tk.Frame(main, bg=SIDEBAR_COLOR, width=220)
+        rightbar.pack(side="right", fill="y", padx=(8, 0), pady=8); rightbar.pack_propagate(False)
+        tk.Label(rightbar, text="UP NEXT", bg=SIDEBAR_COLOR, fg="#6B7D8C", font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=20, pady=30)
+        self.queue_container = ScrollableFrame(rightbar, bg_color=SIDEBAR_COLOR)
+        self.queue_container.pack(fill="both", expand=True, padx=5)
+        tk.Button(rightbar, text="Clear Queue", command=self.player.clear_queue, bg=SIDEBAR_COLOR, fg=TEXT_COLOR, bd=0, cursor="hand2").pack(pady=20)
+
+        # Center Content
+        self.content = tk.Frame(main, bg=BG_COLOR)
+        self.content.pack(side="left", fill="both", expand=True, pady=8)
         
-        # Title Row
-        self.lbl_page_title = QLabel("All Songs")
-        self.lbl_page_title.setObjectName("PageTitle")
-        header_layout.addWidget(self.lbl_page_title)
+        self.header_frame = tk.Frame(self.content, bg=BG_COLOR, height=220)
+        self.header_frame.pack(fill="x", padx=0, pady=0); self.header_frame.pack_propagate(False)
+        self.header_canvas = tk.Canvas(self.header_frame, bg=BG_COLOR, highlightthickness=0)
+        self.header_canvas.place(relwidth=1, relheight=1)
+        self.header_frame.bind("<Configure>", self.update_gradient)
+        self.title_text_id = self.header_canvas.create_text(40, 60, text="All Songs", font=("Segoe UI", 40, "bold"), fill=WHITE, anchor="w")
         
-        # Buttons Row (Play Album / Shuffle)
-        self.header_controls = QWidget()
-        hc_layout = QHBoxLayout(self.header_controls)
-        hc_layout.setContentsMargins(0, 10, 0, 0); hc_layout.setSpacing(15)
+        # CANVAS CONTROLS (True Transparency)
+        self.icon_play_big = self.load_icon("assets/play.png", (60, 60))
+        self.btn_play_id = self.header_canvas.create_image(40, 120, image=self.icon_play_big, anchor="nw", state="hidden", tags="controls")
+        self.header_canvas.tag_bind(self.btn_play_id, "<Button-1>", lambda e: self.play_current_view())
+        self.header_canvas.tag_bind(self.btn_play_id, "<Enter>", lambda e: self.header_canvas.config(cursor="hand2"))
+        self.header_canvas.tag_bind(self.btn_play_id, "<Leave>", lambda e: self.header_canvas.config(cursor=""))
         
-        self.btn_play_album = QPushButton("▶") # Green Circle Play
-        self.btn_play_album.setObjectName("AlbumPlayButton")
-        self.btn_play_album.setFixedSize(48, 48)
-        self.btn_play_album.setCursor(Qt.PointingHandCursor)
+        self.btn_shuf_id = self.header_canvas.create_text(120, 150, text="Shuffle", fill="#B0C0D0", font=("Segoe UI", 12, "bold"), anchor="w", state="hidden", tags="controls")
+        self.header_canvas.tag_bind(self.btn_shuf_id, "<Button-1>", lambda e: self.shuffle_current_view())
+        self.header_canvas.tag_bind(self.btn_shuf_id, "<Enter>", lambda e: self.header_canvas.itemconfig(self.btn_shuf_id, fill=WHITE))
+        self.header_canvas.tag_bind(self.btn_shuf_id, "<Leave>", lambda e: self.header_canvas.itemconfig(self.btn_shuf_id, fill="#B0C0D0"))
+
+        self.list_container = ScrollableFrame(self.content, bg_color=BG_COLOR)
+        self.list_container.pack(fill="both", expand=True, padx=20)
+
+    def setup_bottom_player(self):
+        bottom = tk.Frame(self, bg=PLAYER_BG, height=100, bd=1, relief="solid")
+        bottom.pack(side="bottom", fill="x"); bottom.pack_propagate(False)
+        bottom.columnconfigure(0, weight=1, uniform="grp")
+        bottom.columnconfigure(1, weight=2, uniform="grp")
+        bottom.columnconfigure(2, weight=1, uniform="grp")
+        bottom.rowconfigure(0, weight=1)
+
+        info = tk.Frame(bottom, bg=PLAYER_BG); info.grid(row=0, column=0, sticky="w", padx=20)
+        art_f = tk.Frame(info, width=50, height=50, bg="#222"); art_f.pack(side="left"); art_f.pack_propagate(False)
+        self.lbl_mini_art = tk.Label(art_f, bg="#222"); self.lbl_mini_art.pack(expand=True, fill="both")
+        txt_f = tk.Frame(info, bg=PLAYER_BG); txt_f.pack(side="left", padx=10)
+        self.lbl_mini_title = tk.Label(txt_f, text="Select a song", bg=PLAYER_BG, fg=WHITE, font=("Segoe UI", 10, "bold")); self.lbl_mini_title.pack(anchor="w")
+        self.lbl_mini_artist = tk.Label(txt_f, text="", bg=PLAYER_BG, fg=ACCENT_COLOR, font=("Segoe UI", 9)); self.lbl_mini_artist.pack(anchor="w")
+
+        center = tk.Frame(bottom, bg=PLAYER_BG); center.grid(row=0, column=1)
+        self.ico_prev = self.load_icon("assets/prev.png", (24, 24)); self.ico_play = self.load_icon("assets/play.png", (42, 42))
+        self.ico_pause = self.load_icon("assets/pause.png", (42, 42)); self.ico_skip = self.load_icon("assets/skip.png", (24, 24))
+        btns = tk.Frame(center, bg=PLAYER_BG); btns.pack(pady=(10, 5))
+        tk.Button(btns, image=self.ico_prev, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.play_previous_song).pack(side="left", padx=15)
+        self.btn_play = tk.Button(btns, image=self.ico_play, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.toggle_playback); self.btn_play.pack(side="left", padx=15)
+        tk.Button(btns, image=self.ico_skip, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.skip_to_next).pack(side="left", padx=15)
+        slider_f = tk.Frame(center, bg=PLAYER_BG); slider_f.pack(fill="x")
+        self.lbl_cur = tk.Label(slider_f, text="0:00", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 9)); self.lbl_cur.pack(side="left")
+        self.slider = ModernSlider(slider_f, width=400, height=50, command=lambda v: self.player.seek(float(v))); self.slider.pack(side="left", fill="x", expand=True, padx=10)
+        self.lbl_tot = tk.Label(slider_f, text="0:00", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 9)); self.lbl_tot.pack(side="left")
+
+        right = tk.Frame(bottom, bg=PLAYER_BG); right.grid(row=0, column=2, sticky="e", padx=20)
+        tk.Button(right, text="+ Queue", bg=PLAYER_BG, fg=TEXT_COLOR, bd=0, font=("Segoe UI", 10), cursor="hand2", command=self.player.add_to_queue).pack()
+
+    def update_gradient(self, event):
+        w, h = event.width, event.height
+        if w < 10: return
+        self.grad_img = create_gradient(w, h, "#1E2A36", BG_COLOR) # Blue Gradient
+        self.header_canvas.create_image(0, 0, anchor="nw", image=self.grad_img)
+        self.header_canvas.tag_raise(self.title_text_id)
+        self.header_canvas.tag_raise("controls")
+
+    def set_sidebar_active(self, mode):
+        self.btn_all.config(fg=TEXT_COLOR)
+        self.btn_alb.config(fg=TEXT_COLOR)
+        if mode == "all": self.btn_all.config(fg=WHITE)
+        else: self.btn_alb.config(fg=WHITE)
+
+    def play_song_from_view(self, index):
+        if 0 <= index < len(self.current_view_songs):
+            song = self.current_view_songs[index]
+            self.player.play_now(song)
+            self.player.clear_queue()
+            remaining = self.current_view_songs[index+1:]
+            for s in remaining: self.player.add_to_queue(s)
+
+    def refresh_list(self, songs, is_album=False):
+        self.current_view_songs = songs
+        frame = self.list_container.scrollable_frame
+        for w in frame.winfo_children(): w.destroy()
+        self._configure_grid_columns(frame)
+
+        # HEADERS (Inside Grid)
+        h_font = ("Segoe UI", 10, "bold")
+        col0 = "#" if is_album else ""
+        tk.Label(frame, text=col0, bg=BG_COLOR, fg="#6B7D8C", font=h_font).grid(row=0, column=0, sticky="w", pady=(0, 10), padx=(20, 0))
+        tk.Label(frame, text="Title", bg=BG_COLOR, fg="#6B7D8C", font=h_font).grid(row=0, column=1, sticky="w", pady=(0, 10))
+        tk.Label(frame, text="Album", bg=BG_COLOR, fg="#6B7D8C", font=h_font).grid(row=0, column=2, sticky="w", pady=(0, 10))
+        tk.Label(frame, text="Duration", bg=BG_COLOR, fg="#6B7D8C", font=h_font).grid(row=0, column=3, sticky="e", pady=(0, 10), padx=(0, 20))
         
-        self.btn_shuffle_album = QPushButton("🔀") # Shuffle Icon
-        self.btn_shuffle_album.setObjectName("AlbumShuffleButton")
-        self.btn_shuffle_album.setFixedSize(32, 32)
-        self.btn_shuffle_album.setCursor(Qt.PointingHandCursor)
-        
-        hc_layout.addWidget(self.btn_play_album)
-        hc_layout.addWidget(self.btn_shuffle_album)
-        hc_layout.addStretch()
-        
-        header_layout.addWidget(self.header_controls)
+        sep = tk.Frame(frame, bg=SEPARATOR_COLOR, height=1)
+        sep.grid(row=1, column=0, columnspan=4, sticky="ew", padx=20, pady=(0, 5))
 
-        # Table
-        self.song_table = QTableWidget()
-        self.song_table.setColumnCount(5) 
-        self.song_table.setHorizontalHeaderLabels(["#", "Title", "Artist", "Album", "🕒"])
-        self.song_table.setShowGrid(False)
-        self.song_table.verticalHeader().setVisible(False)
-        self.song_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.song_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.song_table.setFocusPolicy(Qt.NoFocus)
-        self.song_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed); self.song_table.setColumnWidth(0, 40)
-        self.song_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.song_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.song_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.song_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed); self.song_table.setColumnWidth(4, 60)
+        start_row = 2
+        for i, song in enumerate(songs, start=start_row):
+            r = i
+            list_idx = i - start_row
+            cmd = lambda e, idx=list_idx: self.play_song_from_view(idx)
+            
+            def on_ent(e, r=r):
+                for w in frame.grid_slaves(row=r): w.config(bg=HOVER_COLOR)
+            def on_lve(e, r=r):
+                for w in frame.grid_slaves(row=r): w.config(bg=BG_COLOR)
 
-        lib_layout.addWidget(self.header_frame)
-        lib_layout.addWidget(self.song_table)
-        
-        # --- Page 2: Albums Grid ---
-        self.page_albums = QFrame()
-        self.page_albums.setObjectName("CenterPanel")
-        alb_layout = QVBoxLayout(self.page_albums)
-        lbl_alb_header = QLabel("Albums"); lbl_alb_header.setStyleSheet("font-size: 32px; font-weight: bold; color: white; margin: 20px;")
-        alb_layout.addWidget(lbl_alb_header)
-        self.album_list_widget = QListWidget()
-        self.album_list_widget.setViewMode(QListWidget.IconMode)
-        self.album_list_widget.setIconSize(QSize(140, 140))
-        self.album_list_widget.setResizeMode(QListWidget.Adjust)
-        self.album_list_widget.setSpacing(20)
-        alb_layout.addWidget(self.album_list_widget)
-        
-        self.center_stack.addWidget(self.page_library)
-        self.center_stack.addWidget(self.page_albums)
+            if is_album:
+                l = tk.Label(frame, text=str(song.track_number), bg=BG_COLOR, fg=TEXT_COLOR)
+                l.grid(row=r, column=0, sticky="w", pady=5, padx=(20, 0))
+                l.bind("<Enter>", on_ent); l.bind("<Leave>", on_lve)
+            else:
+                if song.image_path:
+                    icon = self.load_icon(song.image_path, (45, 45), rounded=True)
+                    if icon:
+                        self.image_refs[f"r{i}"] = icon
+                        lbl = tk.Label(frame, image=icon, bg=BG_COLOR)
+                        lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(20, 0))
+                        lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve)
 
-    def setup_right_sidebar(self):
-        self.right_sidebar = QFrame()
-        self.right_sidebar.setObjectName("Sidebar")
-        layout = QVBoxLayout(self.right_sidebar)
-        layout.setContentsMargins(15, 20, 15, 20)
-        lbl_queue = QLabel("Up Next"); lbl_queue.setObjectName("HeaderLabel")
-        self.queue_list = QListWidget()
-        self.btn_clear_queue = QPushButton("Clear Queue")
-        layout.addWidget(lbl_queue); layout.addWidget(self.queue_list); layout.addWidget(self.btn_clear_queue)
+            meta = tk.Frame(frame, bg=BG_COLOR)
+            meta.grid(row=r, column=1, sticky="we", padx=5)
+            t = tk.Label(meta, text=song.title, bg=BG_COLOR, fg=WHITE, font=("Segoe UI", 10, "bold"), anchor="w")
+            t.pack(fill="x")
+            a = tk.Label(meta, text=song.artist, bg=BG_COLOR, fg=TEXT_COLOR, font=("Segoe UI", 9), anchor="w")
+            a.pack(fill="x")
+            for w in [meta, t, a]: w.bind("<Button-1>", cmd); w.bind("<Enter>", on_ent); w.bind("<Leave>", on_lve)
 
-    def setup_bottom_bar(self):
-        self.bottom_bar = QFrame(); self.bottom_bar.setObjectName("BottomBar"); self.bottom_bar.setFixedHeight(100)
-        layout = QHBoxLayout(self.bottom_bar); layout.setContentsMargins(20, 5, 20, 5)
+            l2 = tk.Label(frame, text=song.album, bg=BG_COLOR, fg=TEXT_COLOR, anchor="w")
+            l2.grid(row=r, column=2, sticky="we")
+            l2.bind("<Enter>", on_ent); l2.bind("<Leave>", on_lve)
 
-        # Info
-        info_w = QWidget(); info_l = QHBoxLayout(info_w); info_l.setContentsMargins(0,0,0,0)
-        self.lbl_art = QLabel(); self.lbl_art.setFixedSize(60, 60); self.lbl_art.setStyleSheet("background-color: #333; border-radius: 4px;"); self.lbl_art.setScaledContents(True)
-        txt_w = QWidget(); txt_l = QVBoxLayout(txt_w); txt_l.setAlignment(Qt.AlignmentFlag.AlignVCenter); txt_l.setSpacing(2)
-        self.lbl_now_title = QLabel("Select a song"); self.lbl_now_title.setObjectName("NowPlayingTitle")
-        self.lbl_now_artist = QLabel(""); self.lbl_now_artist.setObjectName("NowPlayingArtist")
-        txt_l.addWidget(self.lbl_now_title); txt_l.addWidget(self.lbl_now_artist)
-        info_l.addWidget(self.lbl_art); info_l.addWidget(txt_w); info_l.addStretch()
-        
-        # Controls
-        ctrl_w = QWidget(); ctrl_l = QVBoxLayout(ctrl_w); ctrl_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        btns_row = QWidget(); btns_l = QHBoxLayout(btns_row); btns_l.setSpacing(15)
-        self.btn_prev = QPushButton("⏮"); self.btn_play = QPushButton("▶"); self.btn_play.setObjectName("PlayButton"); self.btn_play.setFixedSize(38, 38); self.btn_skip = QPushButton("⏭")
-        btns_l.addWidget(self.btn_prev); btns_l.addWidget(self.btn_play); btns_l.addWidget(self.btn_skip)
-        slider_row = QWidget(); sl_l = QHBoxLayout(slider_row)
-        self.lbl_curr_time = QLabel("0:00"); self.lbl_curr_time.setObjectName("TimeLabel")
-        self.seek_slider = QSlider(Qt.Horizontal); self.seek_slider.setCursor(Qt.PointingHandCursor)
-        self.lbl_total_time = QLabel("0:00"); self.lbl_total_time.setObjectName("TimeLabel")
-        sl_l.addWidget(self.lbl_curr_time); sl_l.addWidget(self.seek_slider); sl_l.addWidget(self.lbl_total_time)
-        ctrl_l.addWidget(btns_row); ctrl_l.addWidget(slider_row)
-
-        # Actions
-        act_w = QWidget(); act_l = QHBoxLayout(act_w); act_l.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.btn_add_queue = QPushButton("+ Queue"); self.btn_add_queue.setFixedWidth(80)
-        act_l.addWidget(self.btn_add_queue)
-
-        layout.addWidget(info_w, 30); layout.addWidget(ctrl_w, 40); layout.addWidget(act_w, 30)
-
-    def apply_gentle_blue_theme(self):
-        self.setStyleSheet("""
-            QMainWindow { background-color: #0F171E; }
-            QWidget { font-family: 'Segoe UI', sans-serif; }
-            #Sidebar, #CenterPanel { background-color: #141E26; border-radius: 10px; border: 1px solid #1E2A36; }
-            #BottomBar { background-color: #0F171E; border-top: 1px solid #1E2A36; }
-            #HeaderFrame { background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #1E2A36, stop:1 #141E26); border-top-left-radius: 10px; border-top-right-radius: 10px; }
-            QLabel { color: #B0C0D0; }
-            #HeaderLabel { color: #6B7D8C; font-weight: bold; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;}
-            #PageTitle { font-size: 36px; font-weight: bold; color: #FFFFFF; }
-            #NowPlayingTitle { font-size: 14px; font-weight: bold; color: #FFFFFF; }
-            #NowPlayingArtist { font-size: 12px; color: #88CCF1; }
-            #TimeLabel { font-size: 11px; color: #6B7D8C; min-width: 30px; }
-            QPushButton { background-color: transparent; color: #B0C0D0; border: none; font-size: 14px; font-weight: 600; padding: 10px; text-align: left; border-radius: 5px; }
-            QPushButton:hover { background-color: rgba(255, 255, 255, 0.05); color: #FFFFFF; }
-            QPushButton[text="+ Add New Song"] { color: #88CCF1; }
-            #PlayButton { background-color: #FFFFFF; color: #0F171E; border-radius: 19px; font-size: 16px; padding: 0px; text-align: center; }
-            #PlayButton:hover { background-color: #E0E0E0; }
-            QPushButton[text="⏮"], QPushButton[text="⏭"] { color: #FFFFFF; font-size: 18px; text-align: center; padding: 0px; }
-            #AlbumPlayButton { background-color: #1db954; color: black; border-radius: 24px; font-size: 24px; padding-bottom: 3px;}
-            #AlbumPlayButton:hover { background-color: #1ed760; transform: scale(1.05); }
-            #AlbumShuffleButton { color: #B0C0D0; font-size: 20px; }
-            #AlbumShuffleButton:hover { color: white; }
-            QTableWidget, QListWidget { background-color: transparent; border: none; color: #B0C0D0; font-size: 13px; outline: none; }
-            QTableWidget::item { padding: 5px; }
-            QTableWidget::item:selected, QListWidget::item:selected { background-color: rgba(136, 204, 241, 0.15); color: #88CCF1; }
-            QHeaderView::section { background-color: transparent; color: #6B7D8C; border: none; border-bottom: 1px solid #22303C; padding: 5px; font-weight: bold; }
-            QSlider::groove:horizontal { border: none; height: 4px; background: #2C3E50; border-radius: 2px; }
-            QSlider::sub-page:horizontal { background: #88CCF1; border-radius: 2px; }
-            QSlider::handle:horizontal { background: #FFFFFF; width: 10px; height: 10px; margin: -3px 0; border-radius: 5px; }
-        """)
-
-    def connect_signals(self):
-        self.btn_library.clicked.connect(self.show_all_songs_view)
-        self.btn_albums.clicked.connect(lambda: self.center_stack.setCurrentIndex(1))
-        self.btn_add_song.clicked.connect(self.open_add_song_dialog)
-
-        self.btn_play.clicked.connect(self.toggle_play_logic)
-        self.btn_skip.clicked.connect(self.player.skip_to_next)
-        self.btn_prev.clicked.connect(self.player.play_previous_song)
-        self.btn_clear_queue.clicked.connect(self.player.stop)
-        self.btn_add_queue.clicked.connect(self.add_table_selection_to_queue)
-        
-        # Header Buttons
-        self.btn_play_album.clicked.connect(self.play_current_view)
-        self.btn_shuffle_album.clicked.connect(self.shuffle_current_view)
-
-        self.song_table.cellDoubleClicked.connect(self.on_table_double_click)
-        self.album_list_widget.itemDoubleClicked.connect(self.on_album_double_click)
-
-        self.seek_slider.sliderPressed.connect(self.on_slider_pressed)
-        self.seek_slider.sliderReleased.connect(self.on_slider_released)
-
-        self.player.current_song_changed.connect(self.update_now_playing_ui)
-        self.player.queue_changed.connect(self.update_queue_ui)
-        self.player.playback_state_changed.connect(self.update_play_button_icon)
-
-    # --- Logic ---
-
-    def open_add_song_dialog(self):
-        dialog = AddSongDialog(self)
-        if dialog.exec():
-            data = dialog.get_data()
-            try:
-                dur = int(data[4])
-                track = int(data[3]) if data[3] else 0
-                self.library.add_song(data[0], data[1], data[2], track, dur, data[5], data[6], data[7])
-                if self.lbl_page_title.text() == "All Songs":
-                    self.refresh_library_view()
-                self.refresh_album_view()
-                save_songs_to_file(self.library)
-            except ValueError: print("Invalid Number")
-
-    def update_ui_timer(self):
-        self.player.check_music_status()
-        if self.player.is_playing and self.player.current_song and not self.is_dragging_slider:
-            pos = self.player.get_current_position() 
-            total = self.player.current_song.duration
-            if total > 0:
-                self.seek_slider.setRange(0, total)
-                self.seek_slider.setValue(int(pos))
-                self.lbl_curr_time.setText(_format_duration(pos))
-                self.lbl_total_time.setText(_format_duration(total))
-
-    def on_slider_pressed(self): self.is_dragging_slider = True
-    def on_slider_released(self):
-        self.player.seek(self.seek_slider.value())
-        self.is_dragging_slider = False
-
-    def toggle_play_logic(self):
-        if self.player.current_song: self.player.toggle_playback()
-        elif self.song_table.rowCount() > 0: self.on_table_double_click(0, 0)
-
-    def update_play_button_icon(self, is_playing):
-        self.btn_play.setText("||" if is_playing else "▶")
-        # Also update the big header button
-        self.btn_play_album.setText("||" if is_playing else "▶")
+            l3 = tk.Label(frame, text=_format_duration(song.duration), bg=BG_COLOR, fg=TEXT_COLOR, anchor="e")
+            l3.grid(row=r, column=3, sticky="e", padx=(0, 20))
+            l3.bind("<Enter>", on_ent); l3.bind("<Leave>", on_lve)
 
     def show_all_songs_view(self):
-        self.lbl_page_title.setText("All Songs")
-        self.refresh_library_view(None)
-        self.center_stack.setCurrentIndex(0)
+        self.header_canvas.itemconfig(self.title_text_id, text="All Songs")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("all")
+        self.refresh_list(self.library.get_sorted_song_list(), is_album=False)
 
-    def refresh_library_view(self, songs_to_display=None):
-        self.song_table.setRowCount(0)
-        if songs_to_display is None:
-            songs = self.library.get_sorted_song_list()
-        else:
-            songs = songs_to_display
-            
-        # Store current view for play/shuffle buttons
-        self.current_view_songs = songs 
-            
-        self.song_table.setRowCount(len(songs))
-        for row, song in enumerate(songs):
-            track_item = QTableWidgetItem(str(song.track_number))
-            track_item.setData(Qt.ItemDataRole.UserRole, song)
-            track_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            title_item = QTableWidgetItem(song.title)
-            title_item.setForeground(QBrush(QColor("#E3F2FD")))
-            self.song_table.setItem(row, 0, track_item)
-            self.song_table.setItem(row, 1, title_item)
-            self.song_table.setItem(row, 2, QTableWidgetItem(song.artist))
-            self.song_table.setItem(row, 3, QTableWidgetItem(song.album))
-            self.song_table.setItem(row, 4, QTableWidgetItem(_format_duration(song.duration)))
-
-    def refresh_album_view(self):
-        self.album_list_widget.clear()
+    def show_albums_view(self):
+        self.header_canvas.itemconfig(self.title_text_id, text="Albums")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("albums")
+        for w in self.list_container.scrollable_frame.winfo_children(): w.destroy()
+        
         albums = self.library.get_songs_by_album()
-        for album_name, songs in albums.items():
-            art_path = songs[0].image_path if songs else ""
-            item = QListWidgetItem(album_name)
-            if os.path.exists(art_path): item.setIcon(QIcon(art_path))
-            item.setData(Qt.ItemDataRole.UserRole, songs)
-            self.album_list_widget.addItem(item)
+        frame = self.list_container.scrollable_frame
+        col, row = 0, 0
+        for i, album in enumerate(albums):
+            card = tk.Frame(frame, bg=BG_COLOR, width=180, height=220)
+            card.grid(row=row, column=col, padx=15, pady=15)
+            card.pack_propagate(False)
+            songs = albums[album]
+            if songs and songs[0].image_path:
+                icon = self.load_icon(songs[0].image_path, (160, 160), rounded=True)
+                if icon:
+                    self.image_refs[f"alb{i}"] = icon
+                    tk.Button(card, image=icon, bg=BG_COLOR, bd=0, activebackground=BG_COLOR, command=lambda a=album: self.open_album(a)).pack(pady=5)
+            tk.Label(card, text=album, bg=BG_COLOR, fg=WHITE, font=("Segoe UI", 10, "bold"), wraplength=160).pack()
+            col += 1
+            if col > 3: col = 0; row += 1
 
-    def on_album_double_click(self, item):
-        songs = item.data(Qt.ItemDataRole.UserRole)
-        if songs:
-            self.lbl_page_title.setText(item.text())
-            self.refresh_library_view(songs)
-            self.center_stack.setCurrentIndex(0)
+    def open_album(self, album_name):
+        self.header_canvas.itemconfig(self.title_text_id, text=album_name)
+        self.header_canvas.itemconfigure("controls", state="normal")
+        self.refresh_list(self.library.get_songs_by_album()[album_name], is_album=True)
 
-    # --- NEW: Play Current View Logic ---
     def play_current_view(self):
-        """Plays the songs currently visible in the table."""
-        if self.current_view_songs:
-            self.player.play_list(self.current_view_songs)
+        if self.current_view_songs: 
+            self.play_song_from_view(0)
 
     def shuffle_current_view(self):
-        """Plays the songs currently visible, but shuffled."""
         if self.current_view_songs:
-            # Copy list so we don't mess up the table order
             shuffled = list(self.current_view_songs)
-            import random
             random.shuffle(shuffled)
             self.player.play_list(shuffled)
 
-    def get_song_from_table_row(self, row):
-        return self.song_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-
-    def on_table_double_click(self, row, col):
-        song = self.get_song_from_table_row(row)
-        if song: self.player.play_now(song)
-
-    def add_table_selection_to_queue(self):
-        row = self.song_table.currentRow()
-        if row >= 0:
-            song = self.get_song_from_table_row(row)
-            if song: self.player.add_to_queue(song)
-
     def update_now_playing_ui(self, song):
         if song:
-            self.lbl_now_title.setText(song.title)
-            self.lbl_now_artist.setText(song.artist)
-            self.lbl_total_time.setText(_format_duration(song.duration))
-            self.btn_play.setText("||") 
-            if os.path.exists(song.image_path): self.lbl_art.setPixmap(QPixmap(song.image_path))
-            else: self.lbl_art.clear()
+            self.lbl_mini_title.config(text=song.title)
+            self.lbl_mini_artist.config(text=song.artist)
+            self.lbl_tot.config(text=_format_duration(song.duration))
+            self.slider.config_range(song.duration)
+            self.btn_play.config(image=self.ico_pause)
+            if song.image_path:
+                icon = self.load_icon(song.image_path, (50, 50), rounded=True)
+                if icon: self.image_refs["mini"] = icon; self.lbl_mini_art.config(image=icon)
         else:
-            self.lbl_now_title.setText("Select a song")
-            self.lbl_now_artist.setText("")
-            self.lbl_curr_time.setText("0:00")
-            self.lbl_total_time.setText("0:00")
-            self.seek_slider.setValue(0)
-            self.btn_play.setText("▶")
-            self.lbl_art.clear()
+            self.btn_play.config(image=self.ico_play)
 
     def update_queue_ui(self, queue):
-        self.queue_list.clear()
-        for song in queue:
-            self.queue_list.addItem(f"{song.title} • {song.artist}")
+        frame = self.queue_container.scrollable_frame
+        for w in frame.winfo_children(): w.destroy()
+        for i, song in enumerate(queue):
+            bg = QUEUE_BG_1 if i % 2 == 0 else QUEUE_BG_2
+            row = tk.Frame(frame, bg=bg, height=45)
+            row.pack(fill="x", pady=0)
+            row.pack_propagate(False)
+            tk.Label(row, text=str(i+1), bg=bg, fg="#6B7D8C", width=4, font=("Segoe UI", 9)).pack(side="left", padx=(5,0))
+            info = tk.Frame(row, bg=bg)
+            info.pack(side="left", fill="x", expand=True, padx=5)
+            tk.Label(info, text=song.title, bg=bg, fg=WHITE, font=("Segoe UI", 9, "bold"), anchor="w").pack(fill="x")
+            tk.Label(info, text=song.artist, bg=bg, fg=TEXT_COLOR, font=("Segoe UI", 8), anchor="w").pack(fill="x")
 
-    def closeEvent(self, event):
+    def update_play_icon(self, is_playing):
+        self.btn_play.config(image=self.ico_pause if is_playing else self.ico_play)
+
+    def update_progress(self):
+        if self.player.is_playing:
+            cur = self.player.get_current_position()
+            self.slider.set_value(cur)
+            self.lbl_cur.config(text=_format_duration(cur))
+        self.after(500, self.update_progress)
+
+    def on_seek(self, val):
+        self.player.seek(float(val))
+
+    def on_close(self):
+        print("Auto-saving on exit...")
         print(save_songs_to_file(self.library))
-        event.accept()
-
-def main():
-    app = QApplication(sys.argv)
-    library = MusicLibrary()
-    load_songs_from_file(library)
-    player = AudioPlayer()
-    window = MainWindow(library, player)
-    window.show()
-    sys.exit(app.exec())
+        self.destroy()
 
 if __name__ == "__main__":
-    main()
+    app = MusicifyApp()
+    app.mainloop()

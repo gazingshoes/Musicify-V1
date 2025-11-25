@@ -1,7 +1,3 @@
-"""
-Music Library Module (Final Version)
-Contains classes for Song and MusicLibrary with Track Numbers & Art support.
-"""
 import math
 from collections import defaultdict
 
