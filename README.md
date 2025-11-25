@@ -1,6 +1,6 @@
-# Project Pemdas - Musicify V2
+# Project Pemdas - Musicify V1
 
-Now with a GUI! Made using QTDesigner (pySide6)
+Now with a GUI! Made using tkinter
 
 ## How to Use
 
