@@ -1,10 +1,10 @@
 """
 GUI Main Program (Tkinter Version)
-FINAL REPAIR V58:
-1. STRUCTURAL MIRRORING: Replaced the collapsing "Spacer Frame" in the header with a real Label containing an invisible image.
-   This forces the Header's first column to be physically identical to the Song List's first column (Art).
-2. PADDING LOCK: Matched the padding (padx=10) on both the Header Art slot and List Art slot.
-3. ALIGNMENT: "TITLE" now aligns perfectly with the song names, not the album art.
+FINAL REPAIR V57:
+1. PIXEL SYNC ENGINE: Replaced 'weight' based resizing with manual pixel calculations in 'on_content_resize'.
+   This forces the Header columns and List columns to be EXACTLY the same width in pixels.
+2. ALIGNMENT: Matched 'sticky' and 'padx' attributes for Title, Album, and Duration in both frames.
+3. RESULT: The Album and Duration headers will now stay perfectly locked above their respective columns.
 """
 import tkinter as tk
 from tkinter import ttk, filedialog, font
@@ -43,6 +43,10 @@ COL_DUR_WIDTH = 80
 ALBUM_CARD_WIDTH = 180
 ALBUM_CARD_HEIGHT = 340
 ALBUM_GRID_PAD = 15
+
+# Ratio for Title vs Album columns (Must sum to < 1.0 to leave room for fixed cols)
+RATIO_TITLE = 0.55
+RATIO_ALBUM = 0.45
 
 # --- UTILS ---
 def create_gradient(width, height, color1, color2):
@@ -268,10 +272,15 @@ class MusicifyApp(tk.Tk):
         return make_round_image(path, size, radius=0)
 
     def _configure_grid_columns(self, frame, is_header=False):
-        # 0: Art (Fixed) | 1: Title (Stretch) | 2: Album (Stretch) | 3: Time (Fixed) | 4: Spacer (Fixed)
+        # Note: We DON'T use weights for Title/Album here. 
+        # Widths are forced in 'on_content_resize' to ensure pixel-perfect sync.
+        
+        # 0: Art (Fixed)
         frame.grid_columnconfigure(0, minsize=COL_ART_WIDTH, weight=0)   
-        frame.grid_columnconfigure(1, weight=5)     
-        frame.grid_columnconfigure(2, weight=3)  
+        # 1 & 2: Title & Album (Controlled manually)
+        frame.grid_columnconfigure(1, weight=0)     
+        frame.grid_columnconfigure(2, weight=0)  
+        # 3: Time (Fixed)
         frame.grid_columnconfigure(3, minsize=COL_DUR_WIDTH, weight=0)
         
         if is_header:
@@ -403,10 +412,15 @@ class MusicifyApp(tk.Tk):
             lbl_art = tk.Label(self.sticky_header, image=self.header_ph, bg=CONTENT_BG, bd=0)
             lbl_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
             
+            # Title: padx=(10,0) to match list title padding
             tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
+            
             tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=2, sticky="w", pady=10)
             tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
+            
+            # Ghost Column to match Scrollbar
             tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=4, sticky="e")
+            
             tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=5, sticky="ew", pady=(0, 0))
         else:
             self.sticky_header.pack_forget()
@@ -513,9 +527,35 @@ class MusicifyApp(tk.Tk):
         self.on_content_resize(None)
 
     def on_content_resize(self, event):
-        if self.view_mode != "album_grid": return
+        if self.view_mode != "album_grid": 
+            # --- PIXEL PERFECT SYNC ENGINE ---
+            width = self.list_container.canvas.winfo_width()
+            if width < 100: return
+            
+            # Calc available pixels
+            avail_w = width - (COL_ART_WIDTH + COL_DUR_WIDTH + SCROLLBAR_WIDTH + 60) # 60=Padding
+            if avail_w < 100: avail_w = 100
+            
+            w_title = int(avail_w * RATIO_TITLE)
+            w_album = int(avail_w * RATIO_ALBUM)
+            
+            # Apply identical minsize to Header
+            self.sticky_header.grid_columnconfigure(0, minsize=COL_ART_WIDTH, weight=0)
+            self.sticky_header.grid_columnconfigure(1, minsize=w_title, weight=0)
+            self.sticky_header.grid_columnconfigure(2, minsize=w_album, weight=0)
+            self.sticky_header.grid_columnconfigure(3, minsize=COL_DUR_WIDTH, weight=0)
+            self.sticky_header.grid_columnconfigure(4, minsize=SCROLLBAR_WIDTH, weight=0)
+
+            # Apply identical minsize to List
+            f = self.list_container.scrollable_frame
+            f.grid_columnconfigure(0, minsize=COL_ART_WIDTH, weight=0)
+            f.grid_columnconfigure(1, minsize=w_title, weight=0)
+            f.grid_columnconfigure(2, minsize=w_album, weight=0)
+            f.grid_columnconfigure(3, minsize=COL_DUR_WIDTH, weight=0)
+            return
+
+        # Grid Logic
         width = self.list_container.canvas.winfo_width()
-        if width < 100: return
         slot_width = ALBUM_CARD_WIDTH + (ALBUM_GRID_PAD * 2)
         cols = max(1, width // slot_width)
         if cols == self.last_cols: return
