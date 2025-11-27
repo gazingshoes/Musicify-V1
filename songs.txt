@@ -10,3 +10,15 @@ Calloused|Title Fight|Floral Green|9|121|Hardcore|C:/Users/rajendra/Documents/Fl
 Lefty|Title Fight|Floral Green|10|240|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Lefty (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
 In-Between|Title Fight|Floral Green|11|173|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - In-Between (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
 Head In The Ceiling Fan|Title Fight|Floral Green|5|213|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Head In The Ceiling Fan - Title Fight.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
+Airbag|Radiohead|OK Computer|1|287|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Airbag - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Paranoid Android|Radiohead|OK Computer|2|386|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Paranoid Android - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Subterranean Homesick Alien|Radiohead|OK Computer|3|267|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Subterranean Homesick Alien - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Exit Music (For A Film)|Radiohead|OK Computer|4|266|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Exit Music (For A Film) - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Let Down|Radiohead|OK Computer|5|299|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Let Down - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Karma Police|Radiohead|OK Computer|6|263|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Karma Police - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Fitter Happier|Radiohead|OK Computer|7|117|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Fitter Happier - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Electioneering|Radiohead|OK Computer|8|230|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Electioneering - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Climbing Up the Walls|Radiohead|OK Computer|9|284|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Climbing Up the Walls - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+No Surprises|Radiohead|OK Computer|10|228|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/No Surprises - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+Lucky|Radiohead|OK Computer|11|258|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Lucky - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+The Tourist|Radiohead|OK Computer|12|326|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/The Tourist - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png

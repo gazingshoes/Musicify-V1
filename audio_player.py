@@ -1,6 +1,6 @@
 """
 Audio Player Module (Tkinter Version)
-Fixed: Prev button logic (Restart if > 10s, Prev if < 10s).
+UPDATED: Added 'skip_to_index' method for queue jumping.
 """
 import pygame
 import random
@@ -51,6 +51,25 @@ class AudioPlayer:
     def shuffle_queue(self):
         random.shuffle(self.queue)
         if self.on_queue_changed: self.on_queue_changed(self.queue)
+
+    def skip_to_index(self, index):
+        """Skips directly to the song at the specified queue index."""
+        if 0 <= index < len(self.queue):
+            self.stop()
+            # Move currently playing to history
+            if self.current_song:
+                self.history.append(self.current_song)
+            
+            # Remove songs before the selected index and add to history
+            for _ in range(index):
+                skipped = self.queue.pop(0)
+                self.history.append(skipped)
+                
+            # Play the selected song (which is now at index 0)
+            self.play_next_from_queue()
+            
+            # Update UI
+            if self.on_queue_changed: self.on_queue_changed(self.queue)
 
     def check_music_status(self):
         if self.is_playing and not self.is_paused:
@@ -128,9 +147,6 @@ class AudioPlayer:
         self.play_next_from_queue()
 
     def play_previous_song(self):
-        # --- LOGIC FIX ---
-        # If playing > 10s: Restart
-        # Else: Go to previous song
         if self.is_playing and self.get_current_position() > 10.0:
             self.seek(0.0)
         else:
