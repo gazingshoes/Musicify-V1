@@ -1,11 +1,3 @@
-"""
-GUI Main Program (Tkinter Version)
-FINAL REPAIR V57:
-1. PIXEL SYNC ENGINE: Replaced 'weight' based resizing with manual pixel calculations in 'on_content_resize'.
-   This forces the Header columns and List columns to be EXACTLY the same width in pixels.
-2. ALIGNMENT: Matched 'sticky' and 'padx' attributes for Title, Album, and Duration in both frames.
-3. RESULT: The Album and Duration headers will now stay perfectly locked above their respective columns.
-"""
 import tkinter as tk
 from tkinter import ttk, filedialog, font
 import os
@@ -14,7 +6,6 @@ import random
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 import ctypes
 
-# High DPI Fix
 try: ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except: pass
 
@@ -63,24 +54,44 @@ def create_gradient(width, height, color1, color2):
     base = base.resize((width, height), resample=Image.Resampling.NEAREST)
     return ImageTk.PhotoImage(base)
 
-def make_round_image(image_path, size, radius=0, default_color="#22303C"):
-    img = None
-    if image_path and os.path.exists(image_path):
-        try:
-            img = Image.open(image_path).resize(size, Image.Resampling.LANCZOS)
-        except:
-            img = None
+def make_round_image(image_path, size, radius=0, bg_color="#141E26"):
+    """
+    Loads image, crops to fill square (no stretch), and applies smooth rounded corners.
+    """
+    try:
+        # Convert hex bg to RGB
+        if bg_color.startswith("#"):
+            bg_rgb = tuple(int(bg_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+        else:
+            bg_rgb = (20, 30, 38)
+
+        if image_path and os.path.exists(image_path):
+            img = Image.open(image_path).convert("RGBA")
+            # Use FIT to crop center (avoids squashing)
+            img = ImageOps.fit(img, size, method=Image.Resampling.LANCZOS)
+        else:
+            # Placeholder if missing
+            img = Image.new('RGBA', size, bg_rgb + (255,))
+
+        if radius > 0:
+            # Super-sampling for smooth edges (4x size)
+            ss_size = (size[0] * 4, size[1] * 4)
+            ss_radius = radius * 4
             
-    if img is None:
-        img = Image.new('RGBA', size, default_color)
-    
-    if radius > 0:
-        mask = Image.new("L", size, 0)
-        draw = ImageDraw.Draw(mask)
-        draw.rounded_rectangle((0, 0) + size, radius=radius, fill=255)
-        img.putalpha(mask)
-        
-    return ImageTk.PhotoImage(img)
+            mask = Image.new("L", ss_size, 0)
+            draw = ImageDraw.Draw(mask)
+            draw.rounded_rectangle((0, 0) + ss_size, radius=ss_radius, fill=255)
+            mask = mask.resize(size, Image.Resampling.LANCZOS)
+            
+            # Create background layer to blend corners
+            bg_layer = Image.new("RGBA", size, bg_rgb + (255,))
+            
+            # Composite: Image over Background
+            img = Image.composite(img, bg_layer, mask)
+
+        return ImageTk.PhotoImage(img)
+    except:
+        return None
 
 # --- CUSTOM WIDGETS ---
 
@@ -92,12 +103,18 @@ class ModernSlider(tk.Canvas):
         self.max_value = 100.0
         self.width = width
         self.height = height
+        
         self.is_hovering = False
         self.is_dragging = False
+        
         cy = height / 2
+        # Background track
         self.create_line(0, cy, width, cy, fill="#2C3E50", width=4, capstyle="round", tags="bg")
+        # Filled track
         self.create_line(0, cy, 0, cy, fill=ACCENT_COLOR, width=4, capstyle="round", tags="fill")
+        # Handle (Circle)
         self.create_oval(0, 0, 0, 0, fill=WHITE, outline="", tags="handle", state="hidden")
+        
         self.bind("<Button-1>", self._on_click)
         self.bind("<B1-Motion>", self._on_drag)
         self.bind("<ButtonRelease-1>", self._on_release)
@@ -112,31 +129,65 @@ class ModernSlider(tk.Canvas):
         self.update_graphics()
 
     def _move_to(self, x):
+        # Calculates value and updates visuals
         x = max(0, min(x, self.width))
         ratio = x / self.width
         self.value = ratio * self.max_value
         self.update_graphics()
-        if self.command: self.command(self.value)
 
     def update_graphics(self):
         ratio = self.value / self.max_value if self.max_value > 0 else 0
         x = ratio * self.width
         cy = self.height / 2
+        
         self.coords("fill", 0, cy, x, cy)
+        
         r = 6 
         self.coords("handle", x-r, cy-r, x+r, cy+r)
-        if self.is_hovering or self.is_dragging: self.itemconfigure("handle", state="normal")
-        else: self.itemconfigure("handle", state="hidden")
+        
+        if self.is_hovering or self.is_dragging: 
+            self.itemconfigure("handle", state="normal")
+        else: 
+            self.itemconfigure("handle", state="hidden")
 
-    def _on_click(self, event): self.is_dragging = True; self._move_to(event.x)
-    def _on_drag(self, event): self.is_dragging = True; self._move_to(event.x)
-    def _on_release(self, event): self.is_dragging = False; self.update_graphics()
-    def _on_enter(self, event): self.is_hovering = True; self.update_graphics()
-    def _on_leave(self, event): self.is_hovering = False; self.update_graphics()
+    # --- EVENT HANDLERS (Fixed) ---
+
+    def _on_click(self, event): 
+        self.is_dragging = True
+        self._move_to(event.x)
+        # Optional: If you want it to skip IMMEDIATELY on click (not just release):
+        # if self.command: self.command(self.value)
+
+    def _on_drag(self, event): 
+        self.is_dragging = True
+        self._move_to(event.x)
+        # We generally DO NOT call command here, or the audio will stutter
+
+    def _on_release(self, event): 
+        self.is_dragging = False
+        self._move_to(event.x) # Ensure final position is captured
+        self.update_graphics()
+        
+        # THIS IS THE PART THAT WAS MISSING IN YOUR ONE-LINER:
+        if self.command: 
+            self.command(self.value)
+
+    def _on_enter(self, event): 
+        self.is_hovering = True
+        self.update_graphics()
+
+    def _on_leave(self, event): 
+        self.is_hovering = False
+        self.update_graphics()
+
     def set_value(self, val):
-        if not self.is_dragging: self.value = val; self.update_graphics()
-    def config_range(self, max_val): self.max_value = max_val
+        # Only update if user isn't currently dragging it
+        if not self.is_dragging: 
+            self.value = val
+            self.update_graphics()
 
+    def config_range(self, max_val): 
+        self.max_value = max_val
 class AddSongDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -267,8 +318,9 @@ class MusicifyApp(tk.Tk):
             self.main_paned.sash_place(1, w - 240, 0)
         except: pass
 
-    def load_icon(self, path, size, rounded=False):
-        if rounded: return make_round_image(path, size, radius=5)
+    def load_icon(self, path, size, rounded=False, bg_color="#141E26"):
+        # Radius 10 for smooth look. Pass the background color to fix white corners.
+        if rounded: return make_round_image(path, size, radius=10, bg_color=bg_color)
         return make_round_image(path, size, radius=0)
 
     def _configure_grid_columns(self, frame, is_header=False):
@@ -341,28 +393,49 @@ class MusicifyApp(tk.Tk):
         self.queue_panel.bind("<Configure>", self.on_queue_resize)
 
     def setup_bottom_player(self):
-        bottom = tk.Frame(self, bg=PLAYER_BG, height=90, bd=0, relief="flat")
+        # HEIGHT INCREASED to 180
+        bottom = tk.Frame(self, bg=PLAYER_BG, height=180, bd=0, relief="flat")
         bottom.pack(side="bottom", fill="x"); bottom.pack_propagate(False)
         tk.Frame(bottom, bg=SEPARATOR_COLOR, height=1).place(x=0, y=0, relwidth=1)
-        bottom.columnconfigure(0, weight=1, uniform="sides"); bottom.columnconfigure(1, weight=2); bottom.columnconfigure(2, weight=1, uniform="sides"); bottom.rowconfigure(0, weight=1)
-        info = tk.Frame(bottom, bg=PLAYER_BG); info.grid(row=0, column=0, sticky="w", padx=20)
-        art_f = tk.Frame(info, width=56, height=56, bg="#222"); art_f.pack(side="left"); art_f.pack_propagate(False)
+        
+        bottom.columnconfigure(0, weight=1, uniform="sides")
+        bottom.columnconfigure(1, weight=2)
+        bottom.columnconfigure(2, weight=1, uniform="sides")
+        bottom.rowconfigure(0, weight=1)
+
+        # Left: Info
+        info = tk.Frame(bottom, bg=PLAYER_BG); info.grid(row=0, column=0, sticky="w", padx=25)
+        
+        # BIGGER ART (120x120)
+        art_f = tk.Frame(info, width=120, height=120, bg="#222"); art_f.pack(side="left"); art_f.pack_propagate(False)
         self.lbl_mini_art = tk.Label(art_f, bg="#222"); self.lbl_mini_art.pack(expand=True, fill="both")
-        txt_f = tk.Frame(info, bg=PLAYER_BG); txt_f.pack(side="left", padx=15)
-        self.lbl_mini_title = tk.Label(txt_f, text="No song selected", bg=PLAYER_BG, fg=WHITE, font=("Segoe UI", 10)); self.lbl_mini_title.pack(anchor="w")
-        self.lbl_mini_artist = tk.Label(txt_f, text="", bg=PLAYER_BG, fg=ACCENT_COLOR, font=("Segoe UI", 9)); self.lbl_mini_artist.pack(anchor="w")
+        
+        txt_f = tk.Frame(info, bg=PLAYER_BG); txt_f.pack(side="left", padx=20)
+        # BIGGER FONT
+        self.lbl_mini_title = tk.Label(txt_f, text="No song selected", bg=PLAYER_BG, fg=WHITE, font=("Segoe UI", 14, "bold")); self.lbl_mini_title.pack(anchor="w")
+        self.lbl_mini_artist = tk.Label(txt_f, text="", bg=PLAYER_BG, fg=ACCENT_COLOR, font=("Segoe UI", 11)); self.lbl_mini_artist.pack(anchor="w")
+        
+        # Center: Controls
         center = tk.Frame(bottom, bg=PLAYER_BG); center.grid(row=0, column=1)
-        self.ico_prev = self.load_icon("assets/prev.png", (16, 16)); self.ico_play = self.load_icon("assets/play.png", (32, 32))
-        self.ico_pause = self.load_icon("assets/pause.png", (32, 32)); self.ico_skip = self.load_icon("assets/skip.png", (16, 16))
-        btns = tk.Frame(center, bg=PLAYER_BG); btns.pack(pady=(10, 5))
-        tk.Button(btns, image=self.ico_prev, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.play_previous_song).pack(side="left", padx=15)
-        self.btn_play = tk.Button(btns, image=self.ico_play, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.toggle_playback); self.btn_play.pack(side="left", padx=15)
-        tk.Button(btns, image=self.ico_skip, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.skip_to_next).pack(side="left", padx=15)
+        
+        # BIGGER ICONS (Play=64, Skip=32)
+        self.ico_prev = self.load_icon("assets/prev.png", (32, 32), bg_color=PLAYER_BG)
+        self.ico_play = self.load_icon("assets/play.png", (64, 64), bg_color=PLAYER_BG)
+        self.ico_pause = self.load_icon("assets/pause.png", (64, 64), bg_color=PLAYER_BG)
+        self.ico_skip = self.load_icon("assets/skip.png", (32, 32), bg_color=PLAYER_BG)
+        
+        btns = tk.Frame(center, bg=PLAYER_BG); btns.pack(pady=(15, 10))
+        tk.Button(btns, image=self.ico_prev, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.play_previous_song).pack(side="left", padx=20)
+        self.btn_play = tk.Button(btns, image=self.ico_play, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.toggle_playback); self.btn_play.pack(side="left", padx=20)
+        tk.Button(btns, image=self.ico_skip, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.skip_to_next).pack(side="left", padx=20)
+        
         slider_f = tk.Frame(center, bg=PLAYER_BG); slider_f.pack(fill="x")
-        self.lbl_cur = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 8)); self.lbl_cur.pack(side="left", padx=5)
-        self.slider = ModernSlider(slider_f, width=400, height=12, bg_color=PLAYER_BG, command=lambda v: self.player.seek(float(v))); self.slider.pack(side="left", padx=5)
-        self.lbl_tot = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 8)); self.lbl_tot.pack(side="left", padx=5)
-        right = tk.Frame(bottom, bg=PLAYER_BG); right.grid(row=0, column=2, sticky="e", padx=20)
+        self.lbl_cur = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 10)); self.lbl_cur.pack(side="left", padx=8)
+        self.slider = ModernSlider(slider_f, width=450, height=12, bg_color=PLAYER_BG, command=lambda v: self.player.seek(float(v))); self.slider.pack(side="left", padx=8)
+        self.lbl_tot = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 10)); self.lbl_tot.pack(side="left", padx=8)
+
+        # Right: Queue
+        right = tk.Frame(bottom, bg=PLAYER_BG); right.grid(row=0, column=2, sticky="e", padx=30)
 
     def update_gradient(self, event):
         w, h = event.width, event.height
@@ -372,11 +445,161 @@ class MusicifyApp(tk.Tk):
         self.header_canvas.tag_raise(self.title_text_id)
         self.header_canvas.tag_raise("controls")
 
+    # --- LOGIC METHODS (Paste inside MusicifyApp class) ---
+
     def set_sidebar_active(self, mode):
         self.btn_all.config(fg=TEXT_COLOR)
         self.btn_alb.config(fg=TEXT_COLOR)
         if mode == "all": self.btn_all.config(fg=WHITE)
         else: self.btn_alb.config(fg=WHITE)
+
+    def show_all_songs_view(self):
+        self.header_canvas.itemconfig(self.title_text_id, text="All Songs")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("all")
+        self.refresh_list(self.library.get_sorted_song_list(), is_album=False)
+
+    def show_albums_view(self):
+        self.header_canvas.itemconfig(self.title_text_id, text="Albums")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("albums")
+        self.sticky_header.pack_forget()
+        
+        frame = self.list_container.scrollable_frame
+        for w in frame.winfo_children(): w.destroy()
+        self.view_mode = "album_grid"
+        self.album_cards = []
+        self.is_album_view = False 
+        self.last_cols = 0 
+        
+        # GRID RESET (Fixes spacing issue)
+        for c in range(20): frame.grid_columnconfigure(c, weight=0, minsize=0, uniform="")
+
+        albums = self.library.get_songs_by_album()
+        for i, album in enumerate(albums):
+            card = tk.Frame(frame, bg=SIDEBAR_BG, width=ALBUM_CARD_WIDTH, height=ALBUM_CARD_HEIGHT)
+            card.pack_propagate(False)
+            def on_c_ent(e, c=card): c.config(bg=HOVER_COLOR)
+            def on_c_lve(e, c=card): c.config(bg=SIDEBAR_BG)
+            card.bind("<Enter>", on_c_ent); card.bind("<Leave>", on_c_lve)
+            songs = albums[album]
+            if songs and songs[0].image_path:
+                icon = self.load_icon(songs[0].image_path, (160, 160), rounded=True, bg_color=SIDEBAR_BG)
+                if icon:
+                    self.image_refs[f"alb{i}"] = icon
+                    btn = tk.Button(card, image=icon, bg=SIDEBAR_BG, bd=0, activebackground=SIDEBAR_BG, command=lambda a=album: self.open_album(a))
+                    btn.pack(pady=15)
+                    btn.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
+                    btn.bind("<Leave>", lambda e, c=card: c.config(bg=SIDEBAR_BG))
+            lbl = tk.Label(card, text=album, bg=SIDEBAR_BG, fg=WHITE, font=("Segoe UI", 10, "bold"), wraplength=160, justify="left")
+            lbl.pack(anchor="w", padx=10)
+            lbl.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
+            artist_name = songs[0].artist if songs else "Unknown"
+            lbl2 = tk.Label(card, text=artist_name, bg=SIDEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 9), wraplength=160, justify="left")
+            lbl2.pack(anchor="w", padx=10)
+            lbl2.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
+            self.album_cards.append(card)
+        self.on_content_resize(None)
+
+    def open_album(self, album_name):
+        self.header_canvas.itemconfig(self.title_text_id, text=album_name)
+        self.header_canvas.itemconfigure("controls", state="normal")
+        self.refresh_list(self.library.get_songs_by_album()[album_name], is_album=True)
+
+    def play_current_view(self):
+        if self.current_view_songs: 
+            self.play_song_from_view(0)
+
+    def shuffle_current_view(self):
+        if self.current_view_songs:
+            shuffled = list(self.current_view_songs)
+            random.shuffle(shuffled)
+            self.player.play_list(shuffled)
+
+    def refresh_list(self, songs, is_album=False):
+        self.view_mode = "list"
+        self.album_cards = []
+        self.is_album_view = is_album 
+        self.current_view_songs = songs
+        
+        # --- UPDATE STICKY HEADER ---
+        for w in self.sticky_header.winfo_children(): w.destroy()
+        
+        if is_album or self.view_mode == "list":
+            self.sticky_header.pack(fill="x", padx=30, pady=(0, 0), before=self.list_container) 
+            h_font = ("Segoe UI", 9, "bold")
+            
+            # ALIGNMENT FIX: Invisible 48x48 image to force alignment
+            self.header_ph = make_round_image(None, (48,48), default_color=CONTENT_BG)
+            lbl_art = tk.Label(self.sticky_header, image=self.header_ph, bg=CONTENT_BG, bd=0)
+            lbl_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
+            
+            tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
+            tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=2, sticky="w", pady=10)
+            tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
+            tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=4, sticky="e")
+            tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=5, sticky="ew", pady=(0, 0))
+        else:
+            self.sticky_header.pack_forget()
+
+        frame = self.list_container.scrollable_frame
+        for w in frame.winfo_children(): w.destroy()
+        
+        if is_album:
+            for c in range(5): frame.grid_columnconfigure(c, weight=0, minsize=0)
+        else:
+            self._configure_grid_columns(frame)
+
+        start_row = 0
+
+        for i, song in enumerate(songs, start=start_row):
+            r = i
+            list_idx = i - start_row
+            cmd = lambda e, idx=list_idx: self.play_song_from_view(idx)
+            r_click = lambda e, s=song: self.show_context_menu(e, s)
+            def on_ent(e, r=r):
+                for w in frame.grid_slaves(row=r): w.config(bg=HOVER_COLOR)
+            def on_lve(e, r=r):
+                for w in frame.grid_slaves(row=r): w.config(bg=CONTENT_BG)
+
+            if is_album:
+                l = tk.Label(frame, text=str(song.track_number), bg=CONTENT_BG, fg=TEXT_COLOR)
+                l.grid(row=r, column=0, sticky="w", pady=8, padx=(15,0))
+                l.bind("<Enter>", on_ent); l.bind("<Leave>", on_lve); l.bind("<Button-3>", r_click)
+            else:
+                icon = self.load_icon(song.image_path, (48, 48), rounded=True, bg_color=CONTENT_BG)
+                if icon:
+                    self.image_refs[f"s{i}"] = icon
+                    lbl = tk.Label(frame, image=icon, bg=CONTENT_BG, bd=0)
+                    lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                    lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
+                else:
+                    ph = make_round_image(None, (48,48), bg_color=CONTENT_BG)
+                    self.image_refs[f"s{i}_ph"] = ph
+                    lbl = tk.Label(frame, image=ph, bg=CONTENT_BG, bd=0)
+                    lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                    lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
+
+            meta = tk.Frame(frame, bg=CONTENT_BG)
+            meta.grid(row=r, column=1, sticky="we", padx=10)
+            t = tk.Label(meta, text=song.title, bg=CONTENT_BG, fg=WHITE, font=("Segoe UI", 10), anchor="w")
+            t.pack(fill="x")
+            a = tk.Label(meta, text=song.artist, bg=CONTENT_BG, fg=TEXT_COLOR, font=("Segoe UI", 9), anchor="w")
+            a.pack(fill="x")
+            for w in [meta, t, a]: w.bind("<Button-1>", cmd); w.bind("<Enter>", on_ent); w.bind("<Leave>", on_lve); w.bind("<Button-3>", r_click)
+
+            l2 = tk.Label(frame, text=song.album, bg=CONTENT_BG, fg=TEXT_COLOR, anchor="w")
+            l2.grid(row=r, column=2, sticky="we")
+            l2.bind("<Enter>", on_ent); l2.bind("<Leave>", on_lve); l2.bind("<Button-3>", r_click)
+
+            l3 = tk.Label(frame, text=_format_duration(song.duration), bg=CONTENT_BG, fg=TEXT_COLOR, anchor="e")
+            l3.grid(row=r, column=3, sticky="e", padx=(0,10))
+            l3.bind("<Enter>", on_ent); l3.bind("<Leave>", on_lve); l3.bind("<Button-3>", r_click)
+
+    def open_album(self, album_name):
+        self.header_canvas.itemconfig(self.title_text_id, text=album_name)
+        self.header_canvas.itemconfigure("controls", state="normal")
+        self.refresh_list(self.library.get_songs_by_album()[album_name], is_album=True)
 
     def play_song_from_view(self, index):
         if 0 <= index < len(self.current_view_songs):
@@ -405,20 +628,19 @@ class MusicifyApp(tk.Tk):
             self.sticky_header.pack(fill="x", padx=30, pady=(0, 0), before=self.list_container) 
             h_font = ("Segoe UI", 9, "bold")
             
-            # FIX: Phantom Label to mimic Art Column width & padding
-            # We use an invisible 48x48 image (same as song list)
-            # Padding is (10,0) because list art uses padx=10
-            self.header_ph = make_round_image(None, (48,48), default_color=CONTENT_BG) # Invisible
-            lbl_art = tk.Label(self.sticky_header, image=self.header_ph, bg=CONTENT_BG, bd=0)
-            lbl_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
+            # ALIGNMENT FIX: Create a fixed 60px wide frame for Col 0
+            # This physically pushes "TITLE" to the right by exactly 60px + 10px padding
+            f_art = tk.Frame(self.sticky_header, width=60, height=1, bg=CONTENT_BG)
+            f_art.pack_propagate(False) 
+            f_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
             
-            # Title: padx=(10,0) to match list title padding
+            # Title Padding (10,0) matches list item padding
             tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
             
             tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=2, sticky="w", pady=10)
             tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
             
-            # Ghost Column to match Scrollbar
+            # Scrollbar Spacer
             tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=4, sticky="e")
             
             tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=5, sticky="ew", pady=(0, 0))
@@ -450,23 +672,27 @@ class MusicifyApp(tk.Tk):
                 l.grid(row=r, column=0, sticky="w", pady=8, padx=(15,0))
                 l.bind("<Enter>", on_ent); l.bind("<Leave>", on_lve); l.bind("<Button-3>", r_click)
             else:
-                # Art Column: 48x48, padx=10 to match header
+                # Art Column: Fixed 60px width frame
+                art_cont = tk.Frame(frame, width=60, height=48, bg=CONTENT_BG, bd=0, highlightthickness=0)
+                art_cont.pack_propagate(False)
+                art_cont.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                art_cont.bind("<Button-1>", cmd); art_cont.bind("<Enter>", on_ent); art_cont.bind("<Leave>", on_lve); art_cont.bind("<Button-3>", r_click)
+                
                 icon = self.load_icon(song.image_path, (48, 48), rounded=True)
                 if icon:
                     self.image_refs[f"s{i}"] = icon
-                    lbl = tk.Label(frame, image=icon, bg=CONTENT_BG, bd=0)
-                    lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                    lbl = tk.Label(art_cont, image=icon, bg=CONTENT_BG, bd=0)
+                    lbl.pack(expand=True)
                     lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
                 else:
-                    # Ensure placeholder maintains grid structure
                     ph = make_round_image(None, (48,48))
                     self.image_refs[f"s{i}_ph"] = ph
-                    lbl = tk.Label(frame, image=ph, bg=CONTENT_BG, bd=0)
-                    lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                    lbl = tk.Label(art_cont, image=ph, bg=CONTENT_BG, bd=0)
+                    lbl.pack(expand=True)
                     lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
 
             meta = tk.Frame(frame, bg=CONTENT_BG)
-            # Title Column: padx=10 to match header
+            # Title Column: padx=10 matches Header
             meta.grid(row=r, column=1, sticky="we", padx=(10, 5))
             t = tk.Label(meta, text=song.title, bg=CONTENT_BG, fg=WHITE, font=("Segoe UI", 10), anchor="w")
             t.pack(fill="x")
@@ -482,11 +708,7 @@ class MusicifyApp(tk.Tk):
             l3.grid(row=r, column=3, sticky="e", padx=(0,10))
             l3.bind("<Enter>", on_ent); l3.bind("<Leave>", on_lve); l3.bind("<Button-3>", r_click)
 
-    def show_all_songs_view(self):
-        self.header_canvas.itemconfig(self.title_text_id, text="All Songs")
-        self.header_canvas.itemconfigure("controls", state="hidden")
-        self.set_sidebar_active("all")
-        self.refresh_list(self.library.get_sorted_song_list(), is_album=False)
+        self.on_content_resize(None)
 
     def show_albums_view(self):
         self.header_canvas.itemconfig(self.title_text_id, text="Albums")
@@ -496,34 +718,50 @@ class MusicifyApp(tk.Tk):
         
         frame = self.list_container.scrollable_frame
         for w in frame.winfo_children(): w.destroy()
+        
         self.view_mode = "album_grid"
         self.album_cards = []
         self.is_album_view = False 
         self.last_cols = 0 
+        
+        # --- FIX: RESET GRID COLUMNS ---
+        # This clears the "stretchy" settings from the song list view
+        # uniform="" stops the columns from forcing equal width
+        for c in range(20): 
+            frame.grid_columnconfigure(c, weight=0, minsize=0, uniform="")
+
         albums = self.library.get_songs_by_album()
         for i, album in enumerate(albums):
             card = tk.Frame(frame, bg=SIDEBAR_BG, width=ALBUM_CARD_WIDTH, height=ALBUM_CARD_HEIGHT)
             card.pack_propagate(False)
+            
             def on_c_ent(e, c=card): c.config(bg=HOVER_COLOR)
             def on_c_lve(e, c=card): c.config(bg=SIDEBAR_BG)
             card.bind("<Enter>", on_c_ent); card.bind("<Leave>", on_c_lve)
+            
             songs = albums[album]
             if songs and songs[0].image_path:
-                icon = self.load_icon(songs[0].image_path, (160, 160), rounded=True)
+                # Load with background color to fix white corners
+                icon = self.load_icon(songs[0].image_path, (160, 160), rounded=True, bg_color=SIDEBAR_BG)
                 if icon:
                     self.image_refs[f"alb{i}"] = icon
                     btn = tk.Button(card, image=icon, bg=SIDEBAR_BG, bd=0, activebackground=SIDEBAR_BG, command=lambda a=album: self.open_album(a))
                     btn.pack(pady=15)
                     btn.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
                     btn.bind("<Leave>", lambda e, c=card: c.config(bg=SIDEBAR_BG))
+            
             lbl = tk.Label(card, text=album, bg=SIDEBAR_BG, fg=WHITE, font=("Segoe UI", 10, "bold"), wraplength=160, justify="left")
             lbl.pack(anchor="w", padx=10)
             lbl.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
+            
             artist_name = songs[0].artist if songs else "Unknown"
             lbl2 = tk.Label(card, text=artist_name, bg=SIDEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 9), wraplength=160, justify="left")
             lbl2.pack(anchor="w", padx=10)
             lbl2.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
+            
             self.album_cards.append(card)
+            
+        # Trigger initial layout calculation
         self.on_content_resize(None)
 
     def on_content_resize(self, event):
@@ -588,9 +826,13 @@ class MusicifyApp(tk.Tk):
             self.lbl_tot.config(text=_format_duration(song.duration))
             self.slider.config_range(song.duration)
             self.btn_play.config(image=self.ico_pause)
+            
             if song.image_path:
-                icon = self.load_icon(song.image_path, (56, 56), rounded=False)
-                if icon: self.image_refs["mini"] = icon; self.lbl_mini_art.config(image=icon)
+                # FIX: Pass PLAYER_BG so corners blend with the bottom bar, not the list
+                icon = self.load_icon(song.image_path, (100, 100), rounded=True, bg_color=PLAYER_BG)
+                if icon: 
+                    self.image_refs["mini"] = icon
+                    self.lbl_mini_art.config(image=icon)
         else:
             self.btn_play.config(image=self.ico_play)
 
