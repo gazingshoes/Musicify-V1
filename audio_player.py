@@ -1,7 +1,3 @@
-"""
-Audio Player Module (Tkinter Version)
-UPDATED: Added 'skip_to_index' method for queue jumping.
-"""
 import pygame
 import random
 

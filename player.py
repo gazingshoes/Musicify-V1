@@ -1,8 +1,3 @@
-"""
-Player Module (Track Number Edition)
-Handles file operations with the 8-column format.
-"""
-
 def save_songs_to_file(library, filename="songs.txt"):
     try:
         with open(filename, 'w', encoding='utf-8') as file:

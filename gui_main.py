@@ -35,7 +35,7 @@ ALBUM_CARD_WIDTH = 180
 ALBUM_CARD_HEIGHT = 340
 ALBUM_GRID_PAD = 15
 
-# Ratio for Title vs Album columns (Must sum to < 1.0 to leave room for fixed cols)
+# Ratio for Title vs Album columns
 RATIO_TITLE = 0.55
 RATIO_ALBUM = 0.45
 
@@ -54,43 +54,38 @@ def create_gradient(width, height, color1, color2):
     base = base.resize((width, height), resample=Image.Resampling.NEAREST)
     return ImageTk.PhotoImage(base)
 
-def make_round_image(image_path, size, radius=0, bg_color="#141E26"):
+def make_round_image(image_path, size, radius=0):
     """
-    Loads image, crops to fill square (no stretch), and applies smooth rounded corners.
+    Loads image, crops to fill square, and applies a TRANSPARENT rounded mask.
+    No background color blending.
     """
     try:
-        # Convert hex bg to RGB
-        if bg_color.startswith("#"):
-            bg_rgb = tuple(int(bg_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-        else:
-            bg_rgb = (20, 30, 38)
-
+        # 1. Load or Create Placeholder
         if image_path and os.path.exists(image_path):
             img = Image.open(image_path).convert("RGBA")
-            # Use FIT to crop center (avoids squashing)
             img = ImageOps.fit(img, size, method=Image.Resampling.LANCZOS)
         else:
-            # Placeholder if missing
-            img = Image.new('RGBA', size, bg_rgb + (255,))
+            # Transparent placeholder if missing (Invisible)
+            img = Image.new('RGBA', size, (0, 0, 0, 0)) 
 
+        # 2. Apply Rounded Corners (Alpha Masking)
         if radius > 0:
             # Super-sampling for smooth edges (4x size)
             ss_size = (size[0] * 4, size[1] * 4)
             ss_radius = radius * 4
             
+            # Mask: White = Visible, Black = Transparent
             mask = Image.new("L", ss_size, 0)
             draw = ImageDraw.Draw(mask)
             draw.rounded_rectangle((0, 0) + ss_size, radius=ss_radius, fill=255)
             mask = mask.resize(size, Image.Resampling.LANCZOS)
             
-            # Create background layer to blend corners
-            bg_layer = Image.new("RGBA", size, bg_rgb + (255,))
-            
-            # Composite: Image over Background
-            img = Image.composite(img, bg_layer, mask)
+            # Apply the mask to the image's alpha channel
+            img.putalpha(mask)
 
         return ImageTk.PhotoImage(img)
-    except:
+    except Exception as e:
+        print(f"Error making round image: {e}")
         return None
 
 # --- CUSTOM WIDGETS ---
@@ -310,6 +305,8 @@ class MusicifyApp(tk.Tk):
         self.after(100, self.force_layout)
         self.after(100, self.update_progress)
 
+        self.bind('<space>', lambda event: self.player.toggle_playback())
+
     def force_layout(self):
         self.update_idletasks()
         w = self.winfo_width()
@@ -318,9 +315,14 @@ class MusicifyApp(tk.Tk):
             self.main_paned.sash_place(1, w - 240, 0)
         except: pass
 
-    def load_icon(self, path, size, rounded=False, bg_color="#141E26"):
-        # Radius 10 for smooth look. Pass the background color to fix white corners.
-        if rounded: return make_round_image(path, size, radius=10, bg_color=bg_color)
+    def load_icon(self, path, size, rounded=False, bg_color=None):
+        # We accept 'bg_color' so older calls don't crash, 
+        # but we ignore it because we are now using true transparency.
+        
+        if rounded: 
+            # REMOVED: bg_color=bg_color
+            return make_round_image(path, size, radius=10)
+        
         return make_round_image(path, size, radius=0)
 
     def _configure_grid_columns(self, frame, is_header=False):
@@ -392,6 +394,14 @@ class MusicifyApp(tk.Tk):
         tk.Button(self.queue_panel, text="Clear Queue", command=self.player.clear_queue, bg=QUEUE_BG, fg=TEXT_COLOR, bd=0, cursor="hand2", font=("Segoe UI", 9)).pack(pady=15)
         self.queue_panel.bind("<Configure>", self.on_queue_resize)
 
+    def change_volume(self, value):
+        """Sets the app volume (0.0 to 1.0) based on slider value (0-100)"""
+        try:
+            vol = float(value) / 100.0
+            pygame.mixer.music.set_volume(vol)
+        except Exception as e:
+            print(f"Error setting volume: {e}")
+
     def setup_bottom_player(self):
         # HEIGHT INCREASED to 180
         bottom = tk.Frame(self, bg=PLAYER_BG, height=180, bd=0, relief="flat")
@@ -403,39 +413,57 @@ class MusicifyApp(tk.Tk):
         bottom.columnconfigure(2, weight=1, uniform="sides")
         bottom.rowconfigure(0, weight=1)
 
-        # Left: Info
+        # --- LEFT: SONG INFO (UNCHANGED) ---
         info = tk.Frame(bottom, bg=PLAYER_BG); info.grid(row=0, column=0, sticky="w", padx=25)
         
-        # BIGGER ART (120x120)
-        art_f = tk.Frame(info, width=120, height=120, bg="#222"); art_f.pack(side="left"); art_f.pack_propagate(False)
-        self.lbl_mini_art = tk.Label(art_f, bg="#222"); self.lbl_mini_art.pack(expand=True, fill="both")
+        art_f = tk.Frame(info, width=120, height=120, bg=PLAYER_BG) 
+        art_f.pack(side="left"); art_f.pack_propagate(False)
+        self.lbl_mini_art = tk.Label(art_f, bg=PLAYER_BG) 
+        self.lbl_mini_art.pack(expand=True, fill="both")
         
         txt_f = tk.Frame(info, bg=PLAYER_BG); txt_f.pack(side="left", padx=20)
-        # BIGGER FONT
         self.lbl_mini_title = tk.Label(txt_f, text="No song selected", bg=PLAYER_BG, fg=WHITE, font=("Segoe UI", 14, "bold")); self.lbl_mini_title.pack(anchor="w")
         self.lbl_mini_artist = tk.Label(txt_f, text="", bg=PLAYER_BG, fg=ACCENT_COLOR, font=("Segoe UI", 11)); self.lbl_mini_artist.pack(anchor="w")
+
+        # --- CENTER: CONTROLS (UNCHANGED) ---
+        center = tk.Frame(bottom, bg=PLAYER_BG)
+        center.grid(row=0, column=1, padx=50) 
         
-        # Center: Controls
-        center = tk.Frame(bottom, bg=PLAYER_BG); center.grid(row=0, column=1)
-        
-        # BIGGER ICONS (Play=64, Skip=32)
         self.ico_prev = self.load_icon("assets/prev.png", (32, 32), bg_color=PLAYER_BG)
         self.ico_play = self.load_icon("assets/play.png", (64, 64), bg_color=PLAYER_BG)
         self.ico_pause = self.load_icon("assets/pause.png", (64, 64), bg_color=PLAYER_BG)
         self.ico_skip = self.load_icon("assets/skip.png", (32, 32), bg_color=PLAYER_BG)
         
-        btns = tk.Frame(center, bg=PLAYER_BG); btns.pack(pady=(15, 10))
-        tk.Button(btns, image=self.ico_prev, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.play_previous_song).pack(side="left", padx=20)
-        self.btn_play = tk.Button(btns, image=self.ico_play, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.toggle_playback); self.btn_play.pack(side="left", padx=20)
-        tk.Button(btns, image=self.ico_skip, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.skip_to_next).pack(side="left", padx=20)
+        btns = tk.Frame(center, bg=PLAYER_BG, width=300, height=80)
+        btns.pack_propagate(False) 
+        btns.pack(pady=(40, 5))    
+
+        tk.Button(btns, image=self.ico_prev, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.play_previous_song).pack(side="left", expand=True)
+        self.btn_play = tk.Button(btns, image=self.ico_play, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.toggle_playback); self.btn_play.pack(side="left", expand=True)
+        tk.Button(btns, image=self.ico_skip, bg=PLAYER_BG, activebackground=PLAYER_BG, bd=0, cursor="hand2", command=self.player.skip_to_next).pack(side="left", expand=True)
         
         slider_f = tk.Frame(center, bg=PLAYER_BG); slider_f.pack(fill="x")
         self.lbl_cur = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 10)); self.lbl_cur.pack(side="left", padx=8)
         self.slider = ModernSlider(slider_f, width=450, height=12, bg_color=PLAYER_BG, command=lambda v: self.player.seek(float(v))); self.slider.pack(side="left", padx=8)
         self.lbl_tot = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 10)); self.lbl_tot.pack(side="left", padx=8)
 
-        # Right: Queue
-        right = tk.Frame(bottom, bg=PLAYER_BG); right.grid(row=0, column=2, sticky="e", padx=30)
+        # --- RIGHT: VOLUME CONTROL (NEW) ---
+        right = tk.Frame(bottom, bg=PLAYER_BG)
+        right.grid(row=0, column=2, sticky="e", padx=30)
+        
+        # 1. Volume Icon
+        self.ico_vol = self.load_icon("assets/volume.png", (20, 20), bg_color=PLAYER_BG)
+        lbl_vol = tk.Label(right, image=self.ico_vol, bg=PLAYER_BG)
+        lbl_vol.pack(side="left", padx=(0, 10))
+
+        # 2. Volume Slider (Smaller width)
+        self.vol_slider = ModernSlider(right, width=100, height=6, bg_color=PLAYER_BG, command=self.change_volume)
+        self.vol_slider.pack(side="left")
+        
+        # 3. Initialize Volume (50%)
+        self.vol_slider.config_range(100)
+        self.vol_slider.set_value(50)
+        self.change_volume(50)
 
     def update_gradient(self, event):
         w, h = event.width, event.height
