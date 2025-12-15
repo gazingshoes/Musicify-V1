@@ -55,7 +55,7 @@ class MusicLibrary:
         self.all_songs[key] = new_song
         self.genres.add(genre)
         self.albums.add(album)
-        return f"✅ Added song: {new_song.title}"
+        return f"Added song: {new_song.title}"
     
     def get_sorted_song_list(self):
         songs = list(self.all_songs.values())

@@ -91,9 +91,10 @@ def make_round_image(image_path, size, radius=0):
 # --- CUSTOM WIDGETS ---
 
 class ModernSlider(tk.Canvas):
-    def __init__(self, master, width=300, height=10, command=None, bg_color=PLAYER_BG, **kwargs):
+    def __init__(self, master, width=300, height=10, command=None, bg_color=PLAYER_BG, realtime=False, **kwargs):
         super().__init__(master, width=width, height=height, bg=bg_color, highlightthickness=0, **kwargs)
         self.command = command
+        self.realtime = realtime 
         self.value = 0.0
         self.max_value = 100.0
         self.width = width
@@ -156,12 +157,15 @@ class ModernSlider(tk.Canvas):
     def _on_drag(self, event): 
         self.is_dragging = True
         self._move_to(event.x)
-        # We generally DO NOT call command here, or the audio will stutter
+        if self.realtime and self.command: 
+            self.command(self.value)
 
     def _on_release(self, event): 
         self.is_dragging = False
         self._move_to(event.x) # Ensure final position is captured
         self.update_graphics()
+        if self.command: 
+            self.command(self.value)
         
         # THIS IS THE PART THAT WAS MISSING IN YOUR ONE-LINER:
         if self.command: 
@@ -369,9 +373,10 @@ class MusicifyApp(tk.Tk):
         self.header_frame.bind("<Configure>", self.update_gradient)
         
         self.title_text_id = self.header_canvas.create_text(30, 80, text="All Songs", font=("Segoe UI", 48, "bold"), fill=WHITE, anchor="w")
-        self.icon_play_big = self.load_icon("assets/play.png", (56, 56), rounded=True) 
+        self.icon_play_big = self.load_icon("assets/play.png", (56, 56), rounded=False)
+        self.icon_pause_big = self.load_icon("assets/pause.png", (56, 56), rounded=False)
         self.btn_play_id = self.header_canvas.create_image(30, 140, image=self.icon_play_big, anchor="nw", tags="controls")
-        self.header_canvas.tag_bind(self.btn_play_id, "<Button-1>", lambda e: self.play_current_view())
+        self.header_canvas.tag_bind(self.btn_play_id, "<Button-1>", lambda e: self.toggle_header_playback())
         self.btn_shuf_id = self.header_canvas.create_text(110, 168, text="SHUFFLE", fill=TEXT_COLOR, font=("Segoe UI", 10, "bold"), anchor="w", tags="controls")
         self.header_canvas.tag_bind(self.btn_shuf_id, "<Button-1>", lambda e: self.shuffle_current_view())
         
@@ -427,7 +432,7 @@ class MusicifyApp(tk.Tk):
 
         # --- CENTER: CONTROLS (UNCHANGED) ---
         center = tk.Frame(bottom, bg=PLAYER_BG)
-        center.grid(row=0, column=1, padx=50) 
+        center.grid(row=0, column=1, padx=20, pady=5) 
         
         self.ico_prev = self.load_icon("assets/prev.png", (32, 32), bg_color=PLAYER_BG)
         self.ico_play = self.load_icon("assets/play.png", (64, 64), bg_color=PLAYER_BG)
@@ -444,26 +449,29 @@ class MusicifyApp(tk.Tk):
         
         slider_f = tk.Frame(center, bg=PLAYER_BG); slider_f.pack(fill="x")
         self.lbl_cur = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 10)); self.lbl_cur.pack(side="left", padx=8)
-        self.slider = ModernSlider(slider_f, width=450, height=12, bg_color=PLAYER_BG, command=lambda v: self.player.seek(float(v))); self.slider.pack(side="left", padx=8)
+        self.slider = ModernSlider(slider_f, width=450, height=12, bg_color=PLAYER_BG, command=lambda v: self.player.seek(float(v)))
+        self.slider.pack(side="left", padx=8)
         self.lbl_tot = tk.Label(slider_f, text="-:--", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 10)); self.lbl_tot.pack(side="left", padx=8)
 
         # --- RIGHT: VOLUME CONTROL (NEW) ---
         right = tk.Frame(bottom, bg=PLAYER_BG)
         right.grid(row=0, column=2, sticky="e", padx=30)
-        
+
+        tk.Label(right, text="Volume", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+
         # 1. Volume Icon
         self.ico_vol = self.load_icon("assets/volume.png", (20, 20), bg_color=PLAYER_BG)
         lbl_vol = tk.Label(right, image=self.ico_vol, bg=PLAYER_BG)
         lbl_vol.pack(side="left", padx=(0, 10))
 
         # 2. Volume Slider (Smaller width)
-        self.vol_slider = ModernSlider(right, width=100, height=6, bg_color=PLAYER_BG, command=self.change_volume)
+        self.vol_slider = ModernSlider(right, width=100, height=6, bg_color=PLAYER_BG, command=self.change_volume, realtime=True)
         self.vol_slider.pack(side="left")
         
         # 3. Initialize Volume (50%)
         self.vol_slider.config_range(100)
-        self.vol_slider.set_value(50)
-        self.change_volume(50)
+        self.vol_slider.set_value(100)
+        self.change_volume(100)
 
     def update_gradient(self, event):
         w, h = event.width, event.height
@@ -486,6 +494,7 @@ class MusicifyApp(tk.Tk):
         self.header_canvas.itemconfigure("controls", state="hidden")
         self.set_sidebar_active("all")
         self.refresh_list(self.library.get_sorted_song_list(), is_album=False)
+        self.update_play_icon(self.player.is_playing)
 
     def show_albums_view(self):
         self.header_canvas.itemconfig(self.title_text_id, text="Albums")
@@ -528,15 +537,28 @@ class MusicifyApp(tk.Tk):
             lbl2.bind("<Enter>", lambda e, c=card: c.config(bg=HOVER_COLOR))
             self.album_cards.append(card)
         self.on_content_resize(None)
+        self.header_canvas.itemconfig(self.btn_play_id, image=self.icon_play_big)
 
     def open_album(self, album_name):
         self.header_canvas.itemconfig(self.title_text_id, text=album_name)
         self.header_canvas.itemconfigure("controls", state="normal")
         self.refresh_list(self.library.get_songs_by_album()[album_name], is_album=True)
+        self.update_play_icon(self.player.is_playing)
 
     def play_current_view(self):
         if self.current_view_songs: 
             self.play_song_from_view(0)
+            
+    def toggle_header_playback(self):
+        if self.player.current_song and self._is_playing_from_current_view() and self.player.is_playing:
+            self.player.toggle_playback()
+        else:
+            self.play_current_view()
+
+    def _is_playing_from_current_view(self):
+        if not self.player.current_song:
+            return False
+        return self.player.current_song in self.current_view_songs
 
     def shuffle_current_view(self):
         if self.current_view_songs:
@@ -623,11 +645,6 @@ class MusicifyApp(tk.Tk):
             l3 = tk.Label(frame, text=_format_duration(song.duration), bg=CONTENT_BG, fg=TEXT_COLOR, anchor="e")
             l3.grid(row=r, column=3, sticky="e", padx=(0,10))
             l3.bind("<Enter>", on_ent); l3.bind("<Leave>", on_lve); l3.bind("<Button-3>", r_click)
-
-    def open_album(self, album_name):
-        self.header_canvas.itemconfig(self.title_text_id, text=album_name)
-        self.header_canvas.itemconfigure("controls", state="normal")
-        self.refresh_list(self.library.get_songs_by_album()[album_name], is_album=True)
 
     def play_song_from_view(self, index):
         if 0 <= index < len(self.current_view_songs):
@@ -905,6 +922,11 @@ class MusicifyApp(tk.Tk):
 
     def update_play_icon(self, is_playing):
         self.btn_play.config(image=self.ico_pause if is_playing else self.ico_play)
+        # Only update header button if playing from current view
+        if self._is_playing_from_current_view() and is_playing:
+            self.header_canvas.itemconfig(self.btn_play_id, image=self.icon_pause_big)
+        else:
+            self.header_canvas.itemconfig(self.btn_play_id, image=self.icon_play_big)
 
     def update_progress(self):
         if self.player.is_playing:
