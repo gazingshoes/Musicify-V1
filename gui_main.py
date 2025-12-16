@@ -1,10 +1,11 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, font
+from tkinter import ttk, filedialog, font, messagebox
 import os
 import pygame
 import random
 from PIL import Image, ImageTk, ImageDraw, ImageOps
 import ctypes
+import csv
 
 try: ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except: pass
@@ -31,6 +32,7 @@ SEPARATOR_COLOR = "#3E3E3E"
 SCROLLBAR_WIDTH = 12 
 COL_ART_WIDTH = 60 
 COL_DUR_WIDTH = 80
+COL_PLAYS_WIDTH = 60
 ALBUM_CARD_WIDTH = 180
 ALBUM_CARD_HEIGHT = 340
 ALBUM_GRID_PAD = 15
@@ -332,19 +334,56 @@ class MusicifyApp(tk.Tk):
         return make_round_image(path, size, radius=0)
 
     def _configure_grid_columns(self, frame, is_header=False):
-        # Note: We DON'T use weights for Title/Album here. 
-        # Widths are forced in 'on_content_resize' to ensure pixel-perfect sync.
-        
-        # 0: Art (Fixed)
+        # Layout: 0: Art | 1: Title | 2: Album | 3: Plays | 4: Duration
         frame.grid_columnconfigure(0, minsize=COL_ART_WIDTH, weight=0)   
-        # 1 & 2: Title & Album (Controlled manually)
         frame.grid_columnconfigure(1, weight=0)     
-        frame.grid_columnconfigure(2, weight=0)  
-        # 3: Time (Fixed)
-        frame.grid_columnconfigure(3, minsize=COL_DUR_WIDTH, weight=0)
+        frame.grid_columnconfigure(2, weight=0)
+        frame.grid_columnconfigure(3, minsize=COL_PLAYS_WIDTH, weight=0) # New Plays Column
+        frame.grid_columnconfigure(4, minsize=COL_DUR_WIDTH, weight=0)
         
+        # The header needs an extra column for the scrollbar alignment
         if is_header:
-             frame.grid_columnconfigure(4, minsize=SCROLLBAR_WIDTH, weight=0)
+             frame.grid_columnconfigure(5, minsize=SCROLLBAR_WIDTH, weight=0)
+
+    def show_liked_songs_view(self):
+        self.header_canvas.itemconfig(self.title_text_id, text="Liked Songs")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("liked")
+        
+        # Filter songs where is_liked is True
+        liked_songs = [s for s in self.library.all_songs.values() if s.is_liked]
+        
+        # Sort them (optional, here by Artist)
+        liked_songs.sort(key=lambda s: s.artist)
+        
+        self.refresh_list(liked_songs, is_album=False)
+        self.update_play_icon(self.player.is_playing)
+
+    def show_most_played_view(self):
+        self.header_canvas.itemconfig(self.title_text_id, text="Most Played")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("most")
+        # Sort by play count descending
+        songs = list(self.library.all_songs.values())
+        songs.sort(key=lambda s: s.play_count, reverse=True)
+        self.refresh_list(songs, is_album=False)
+
+    def show_rarely_played_view(self):
+        self.header_canvas.itemconfig(self.title_text_id, text="Rarely Played")
+        self.header_canvas.itemconfigure("controls", state="hidden")
+        self.set_sidebar_active("rare")
+        # Sort by play count ascending
+        songs = list(self.library.all_songs.values())
+        songs.sort(key=lambda s: s.play_count)
+        self.refresh_list(songs, is_album=False)
+
+    def export_data(self):
+        f = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV File", "*.csv")])
+        if f:
+            if self.library.export_to_csv(f):
+                messagebox.showinfo("Export", f"Library exported successfully to:\n{f}")
+            else:
+                messagebox.showerror("Export Error", "Failed to export library.")
 
     def setup_ui(self):
         self.setup_bottom_player()
@@ -361,7 +400,16 @@ class MusicifyApp(tk.Tk):
         self.btn_all.pack(fill="x", pady=5)
         self.btn_alb = tk.Button(self.sidebar, text="Albums", command=self.show_albums_view, bg=SIDEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 11, "bold"), bd=0, activebackground=SIDEBAR_BG, activeforeground=WHITE, anchor="w", padx=35)
         self.btn_alb.pack(fill="x", pady=5)
-        tk.Frame(self.sidebar, bg="#282828", height=1).pack(fill="x", padx=35, pady=15)
+        self.btn_liked = tk.Button(self.sidebar, text="Liked Songs", command=self.show_liked_songs_view, bg=SIDEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 11, "bold"), bd=0, activebackground=SIDEBAR_BG, activeforeground=WHITE, anchor="w", padx=35)
+        self.btn_liked.pack(fill="x", pady=5)
+        # --- STATS SECTION ---
+        tk.Label(self.sidebar, text="Stats", bg=SIDEBAR_BG, fg="#6B7D8C", font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=35, pady=(20, 5))
+        self.btn_most = tk.Button(self.sidebar, text="Most Played", command=self.show_most_played_view, bg=SIDEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 11, "bold"), bd=0, activebackground=SIDEBAR_BG, activeforeground=WHITE, anchor="w", padx=35)
+        self.btn_most.pack(fill="x", pady=5)
+        self.btn_rare = tk.Button(self.sidebar, text="Rarely Played", command=self.show_rarely_played_view, bg=SIDEBAR_BG, fg=TEXT_COLOR, font=("Segoe UI", 11, "bold"), bd=0, activebackground=SIDEBAR_BG, activeforeground=WHITE, anchor="w", padx=35)
+        self.btn_rare.pack(fill="x", pady=5)
+        # Export Button
+        tk.Button(self.sidebar, text="Export to Excel (CSV)", command=self.export_data, bg=SIDEBAR_BG, fg=ACCENT_COLOR, font=("Segoe UI", 11, "bold"), bd=0, cursor="hand2", activebackground=SIDEBAR_BG, activeforeground=WHITE, anchor="w", padx=35).pack(fill="x", pady=10)
         tk.Button(self.sidebar, text="+ Add New Song", command=lambda: AddSongDialog(self), bg=SIDEBAR_BG, fg=ACCENT_COLOR, font=("Segoe UI", 11, "bold"), bd=0, activebackground=SIDEBAR_BG, activeforeground=WHITE, anchor="w", padx=35).pack(fill="x")
 
         # Content
@@ -496,10 +544,18 @@ class MusicifyApp(tk.Tk):
     # --- LOGIC METHODS (Paste inside MusicifyApp class) ---
 
     def set_sidebar_active(self, mode):
+        # Reset all
         self.btn_all.config(fg=TEXT_COLOR)
         self.btn_alb.config(fg=TEXT_COLOR)
+        self.btn_liked.config(fg=TEXT_COLOR)
+        self.btn_most.config(fg=TEXT_COLOR)
+        self.btn_rare.config(fg=TEXT_COLOR)
+        
         if mode == "all": self.btn_all.config(fg=WHITE)
-        else: self.btn_alb.config(fg=WHITE)
+        elif mode == "albums": self.btn_alb.config(fg=WHITE)
+        elif mode == "liked": self.btn_liked.config(fg=WHITE)
+        elif mode == "most": self.btn_most.config(fg=WHITE)
+        elif mode == "rare": self.btn_rare.config(fg=WHITE)
 
     def show_all_songs_view(self):
         self.header_canvas.itemconfig(self.title_text_id, text="All Songs")
@@ -596,50 +652,60 @@ class MusicifyApp(tk.Tk):
         self.is_album_view = is_album 
         self.current_view_songs = songs
         
-        # --- UPDATE STICKY HEADER ---
+        # 1. Clean up header
         for w in self.sticky_header.winfo_children(): w.destroy()
         
+        # 2. Setup Header
         if is_album or self.view_mode == "list":
             self.sticky_header.pack(fill="x", padx=30, pady=(0, 0), before=self.list_container) 
             h_font = ("Segoe UI", 9, "bold")
             
-            # ALIGNMENT FIX: Invisible 48x48 image to force alignment
-            self.header_ph = make_round_image(None, (48,48))
-            lbl_art = tk.Label(self.sticky_header, image=self.header_ph, bg=CONTENT_BG, bd=0)
-            lbl_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
+            # Art Column
+            f_art = tk.Frame(self.sticky_header, width=60, height=1, bg=CONTENT_BG)
+            f_art.pack_propagate(False) 
+            f_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
             
-            # TITLE Header
+            # Title
             lbl_t = tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
             lbl_t.grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
             lbl_t.bind("<Button-1>", lambda e: self.sort_by("title"))
 
-            # ALBUM Header
+            # Album
             lbl_a = tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
             lbl_a.grid(row=0, column=2, sticky="w", pady=10)
             lbl_a.bind("<Button-1>", lambda e: self.sort_by("album"))
 
-            # DURATION Header
+            # Plays (New)
+            lbl_p = tk.Label(self.sticky_header, text="PLAYS", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
+            lbl_p.grid(row=0, column=3, sticky="e", pady=10, padx=(0,0))
+            lbl_p.bind("<Button-1>", lambda e: self.sort_by("plays"))
+
+            # Duration
             lbl_d = tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
-            lbl_d.grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
+            lbl_d.grid(row=0, column=4, sticky="e", pady=10, padx=(0,10))
             lbl_d.bind("<Button-1>", lambda e: self.sort_by("duration"))
-            tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=4, sticky="e")
-            tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=5, sticky="ew", pady=(0, 0))
+            
+            # Scrollbar spacer
+            tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=5, sticky="e")
+            # Separator line
+            tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=6, sticky="ew", pady=(0, 0))
         else:
             self.sticky_header.pack_forget()
 
+        # 3. Get the frame variable (This was the missing part causing the NameError)
         frame = self.list_container.scrollable_frame
         for w in frame.winfo_children(): w.destroy()
         
+        # 4. Configure columns
         if is_album:
-            for c in range(5): frame.grid_columnconfigure(c, weight=0, minsize=0)
+            for c in range(6): frame.grid_columnconfigure(c, weight=0, minsize=0)
         else:
             self._configure_grid_columns(frame)
 
-        start_row = 0
-
-        for i, song in enumerate(songs, start=start_row):
+        # 5. Loop through songs
+        for i, song in enumerate(songs):
             r = i
-            list_idx = i - start_row
+            list_idx = i
             cmd = lambda e, idx=list_idx: self.play_song_from_view(idx)
             r_click = lambda e, s=song: self.show_context_menu(e, s)
             def on_ent(e, r=r):
@@ -647,26 +713,33 @@ class MusicifyApp(tk.Tk):
             def on_lve(e, r=r):
                 for w in frame.grid_slaves(row=r): w.config(bg=CONTENT_BG)
 
+            # --- ALBUM ART LOGIC ---
             if is_album:
                 l = tk.Label(frame, text=str(song.track_number), bg=CONTENT_BG, fg=TEXT_COLOR)
                 l.grid(row=r, column=0, sticky="w", pady=8, padx=(15,0))
                 l.bind("<Enter>", on_ent); l.bind("<Leave>", on_lve); l.bind("<Button-3>", r_click)
             else:
-                icon = self.load_icon(song.image_path, (48, 48), rounded=True, bg_color=CONTENT_BG)
+                art_cont = tk.Frame(frame, width=60, height=48, bg=CONTENT_BG, bd=0, highlightthickness=0)
+                art_cont.pack_propagate(False)
+                art_cont.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                art_cont.bind("<Button-1>", cmd); art_cont.bind("<Enter>", on_ent); art_cont.bind("<Leave>", on_lve); art_cont.bind("<Button-3>", r_click)
+                
+                icon = self.load_icon(song.image_path, (48, 48), rounded=True)
                 if icon:
                     self.image_refs[f"s{i}"] = icon
-                    lbl = tk.Label(frame, image=icon, bg=CONTENT_BG, bd=0)
-                    lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                    lbl = tk.Label(art_cont, image=icon, bg=CONTENT_BG, bd=0)
+                    lbl.pack(expand=True)
                     lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
                 else:
                     ph = make_round_image(None, (48,48))
                     self.image_refs[f"s{i}_ph"] = ph
-                    lbl = tk.Label(frame, image=ph, bg=CONTENT_BG, bd=0)
-                    lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
+                    lbl = tk.Label(art_cont, image=ph, bg=CONTENT_BG, bd=0)
+                    lbl.pack(expand=True)
                     lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
 
+            # Metadata
             meta = tk.Frame(frame, bg=CONTENT_BG)
-            meta.grid(row=r, column=1, sticky="we", padx=10)
+            meta.grid(row=r, column=1, sticky="we", padx=(10, 5))
             t = tk.Label(meta, text=song.title, bg=CONTENT_BG, fg=WHITE, font=("Segoe UI", 10), anchor="w")
             t.pack(fill="x")
             a = tk.Label(meta, text=song.artist, bg=CONTENT_BG, fg=TEXT_COLOR, font=("Segoe UI", 9), anchor="w")
@@ -677,9 +750,17 @@ class MusicifyApp(tk.Tk):
             l2.grid(row=r, column=2, sticky="we")
             l2.bind("<Enter>", on_ent); l2.bind("<Leave>", on_lve); l2.bind("<Button-3>", r_click)
 
+            # Play Count
+            l_plays = tk.Label(frame, text=f"{song.play_count} plays", bg=CONTENT_BG, fg="#6B7D8C", font=("Segoe UI", 9), anchor="e")
+            l_plays.grid(row=r, column=3, sticky="e")
+            l_plays.bind("<Enter>", on_ent); l_plays.bind("<Leave>", on_lve); l_plays.bind("<Button-3>", r_click)
+
+            # Duration
             l3 = tk.Label(frame, text=_format_duration(song.duration), bg=CONTENT_BG, fg=TEXT_COLOR, anchor="e")
-            l3.grid(row=r, column=3, sticky="e", padx=(0,10))
+            l3.grid(row=r, column=4, sticky="e", padx=(0,10))
             l3.bind("<Enter>", on_ent); l3.bind("<Leave>", on_lve); l3.bind("<Button-3>", r_click)
+
+        self.on_content_resize(None)
 
     def play_song_from_view(self, index):
         if 0 <= index < len(self.current_view_songs):
@@ -764,101 +845,27 @@ class MusicifyApp(tk.Tk):
             else:
                 self.show_albums_view()
 
+    def toggle_like_song(self, song):
+        song.is_liked = not song.is_liked
+        save_songs_to_file(self.library)
+        
+        current_title = self.header_canvas.itemcget(self.title_text_id, "text")
+        if current_title == "Liked Songs":
+            self.show_liked_songs_view()
+
     def show_context_menu(self, event, song):
         menu = tk.Menu(self, tearoff=0, bg=PLAYER_BG, fg=WHITE, activebackground=HOVER_COLOR)
+        
         menu.add_command(label="Add to Queue", command=lambda: self.player.add_to_queue(song))
+        if hasattr(song, 'is_liked') and song.is_liked:
+             menu.add_command(label="Remove from Liked Songs", command=lambda: self.toggle_like_song(song))
+        else:
+             menu.add_command(label="Save to Liked Songs", command=lambda: self.toggle_like_song(song))
+            
+        menu.add_separator()
         menu.add_command(label="Edit", command=lambda: self.edit_song_details(song))
         menu.add_command(label="Delete Song", command=lambda: self.delete_song(song))
         menu.post(event.x_root, event.y_root)
-        
-        # --- UPDATE STICKY HEADER ---
-        for w in self.sticky_header.winfo_children(): w.destroy()
-        
-        if is_album or self.view_mode == "list":
-            self.sticky_header.pack(fill="x", padx=30, pady=(0, 0), before=self.list_container) 
-            h_font = ("Segoe UI", 9, "bold")
-            
-            # ALIGNMENT FIX: Create a fixed 60px wide frame for Col 0
-            # This physically pushes "TITLE" to the right by exactly 60px + 10px padding
-            f_art = tk.Frame(self.sticky_header, width=60, height=1, bg=CONTENT_BG)
-            f_art.pack_propagate(False) 
-            f_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
-            
-            # Title Padding (10,0) matches list item padding
-            tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
-            
-            tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=2, sticky="w", pady=10)
-            tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
-            
-            # Scrollbar Spacer
-            tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=4, sticky="e")
-            
-            tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=5, sticky="ew", pady=(0, 0))
-        else:
-            self.sticky_header.pack_forget()
-
-        frame = self.list_container.scrollable_frame
-        for w in frame.winfo_children(): w.destroy()
-        
-        if is_album:
-            for c in range(5): frame.grid_columnconfigure(c, weight=0, minsize=0)
-        else:
-            self._configure_grid_columns(frame)
-
-        start_row = 0
-
-        for i, song in enumerate(songs, start=start_row):
-            r = i
-            list_idx = i - start_row
-            cmd = lambda e, idx=list_idx: self.play_song_from_view(idx)
-            r_click = lambda e, s=song: self.show_context_menu(e, s)
-            def on_ent(e, r=r):
-                for w in frame.grid_slaves(row=r): w.config(bg=HOVER_COLOR)
-            def on_lve(e, r=r):
-                for w in frame.grid_slaves(row=r): w.config(bg=CONTENT_BG)
-
-            if is_album:
-                l = tk.Label(frame, text=str(song.track_number), bg=CONTENT_BG, fg=TEXT_COLOR)
-                l.grid(row=r, column=0, sticky="w", pady=8, padx=(15,0))
-                l.bind("<Enter>", on_ent); l.bind("<Leave>", on_lve); l.bind("<Button-3>", r_click)
-            else:
-                # Art Column: Fixed 60px width frame
-                art_cont = tk.Frame(frame, width=60, height=48, bg=CONTENT_BG, bd=0, highlightthickness=0)
-                art_cont.pack_propagate(False)
-                art_cont.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
-                art_cont.bind("<Button-1>", cmd); art_cont.bind("<Enter>", on_ent); art_cont.bind("<Leave>", on_lve); art_cont.bind("<Button-3>", r_click)
-                
-                icon = self.load_icon(song.image_path, (48, 48), rounded=True)
-                if icon:
-                    self.image_refs[f"s{i}"] = icon
-                    lbl = tk.Label(art_cont, image=icon, bg=CONTENT_BG, bd=0)
-                    lbl.pack(expand=True)
-                    lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
-                else:
-                    ph = make_round_image(None, (48,48))
-                    self.image_refs[f"s{i}_ph"] = ph
-                    lbl = tk.Label(art_cont, image=ph, bg=CONTENT_BG, bd=0)
-                    lbl.pack(expand=True)
-                    lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
-
-            meta = tk.Frame(frame, bg=CONTENT_BG)
-            # Title Column: padx=10 matches Header
-            meta.grid(row=r, column=1, sticky="we", padx=(10, 5))
-            t = tk.Label(meta, text=song.title, bg=CONTENT_BG, fg=WHITE, font=("Segoe UI", 10), anchor="w")
-            t.pack(fill="x")
-            a = tk.Label(meta, text=song.artist, bg=CONTENT_BG, fg=TEXT_COLOR, font=("Segoe UI", 9), anchor="w")
-            a.pack(fill="x")
-            for w in [meta, t, a]: w.bind("<Button-1>", cmd); w.bind("<Enter>", on_ent); w.bind("<Leave>", on_lve); w.bind("<Button-3>", r_click)
-
-            l2 = tk.Label(frame, text=song.album, bg=CONTENT_BG, fg=TEXT_COLOR, anchor="w")
-            l2.grid(row=r, column=2, sticky="we")
-            l2.bind("<Enter>", on_ent); l2.bind("<Leave>", on_lve); l2.bind("<Button-3>", r_click)
-
-            l3 = tk.Label(frame, text=_format_duration(song.duration), bg=CONTENT_BG, fg=TEXT_COLOR, anchor="e")
-            l3.grid(row=r, column=3, sticky="e", padx=(0,10))
-            l3.bind("<Enter>", on_ent); l3.bind("<Leave>", on_lve); l3.bind("<Button-3>", r_click)
-
-        self.on_content_resize(None)
 
     def show_albums_view(self):
         self.header_canvas.itemconfig(self.title_text_id, text="Albums")
@@ -916,33 +923,36 @@ class MusicifyApp(tk.Tk):
 
     def on_content_resize(self, event):
         if self.view_mode != "album_grid": 
-            # --- PIXEL PERFECT SYNC ENGINE ---
             width = self.list_container.canvas.winfo_width()
             if width < 100: return
             
-            # Calc available pixels
-            avail_w = width - (COL_ART_WIDTH + COL_DUR_WIDTH + SCROLLBAR_WIDTH + 60) # 60=Padding
+            # Calculate dynamic width for Title and Album
+            # Total width minus fixed columns (Art + Plays + Duration + Scrollbar + Padding)
+            fixed_space = COL_ART_WIDTH + COL_PLAYS_WIDTH + COL_DUR_WIDTH + SCROLLBAR_WIDTH + 60
+            avail_w = width - fixed_space
             if avail_w < 100: avail_w = 100
             
-            w_title = int(avail_w * RATIO_TITLE)
-            w_album = int(avail_w * RATIO_ALBUM)
+            w_title = int(avail_w * 0.50)
+            w_album = int(avail_w * 0.40)
             
-            # Apply identical minsize to Header
+            # Apply to Header
             self.sticky_header.grid_columnconfigure(0, minsize=COL_ART_WIDTH, weight=0)
             self.sticky_header.grid_columnconfigure(1, minsize=w_title, weight=0)
             self.sticky_header.grid_columnconfigure(2, minsize=w_album, weight=0)
-            self.sticky_header.grid_columnconfigure(3, minsize=COL_DUR_WIDTH, weight=0)
-            self.sticky_header.grid_columnconfigure(4, minsize=SCROLLBAR_WIDTH, weight=0)
+            self.sticky_header.grid_columnconfigure(3, minsize=COL_PLAYS_WIDTH, weight=0)
+            self.sticky_header.grid_columnconfigure(4, minsize=COL_DUR_WIDTH, weight=0)
+            self.sticky_header.grid_columnconfigure(5, minsize=SCROLLBAR_WIDTH, weight=0)
 
-            # Apply identical minsize to List
+            # Apply to Song List
             f = self.list_container.scrollable_frame
             f.grid_columnconfigure(0, minsize=COL_ART_WIDTH, weight=0)
             f.grid_columnconfigure(1, minsize=w_title, weight=0)
             f.grid_columnconfigure(2, minsize=w_album, weight=0)
-            f.grid_columnconfigure(3, minsize=COL_DUR_WIDTH, weight=0)
+            f.grid_columnconfigure(3, minsize=COL_PLAYS_WIDTH, weight=0)
+            f.grid_columnconfigure(4, minsize=COL_DUR_WIDTH, weight=0)
             return
 
-        # Grid Logic
+        # Album Grid Logic (Keeps existing logic for albums)
         width = self.list_container.canvas.winfo_width()
         slot_width = ALBUM_CARD_WIDTH + (ALBUM_GRID_PAD * 2)
         cols = max(1, width // slot_width)

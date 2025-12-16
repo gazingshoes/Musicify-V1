@@ -1,24 +1,24 @@
-TITLE|ARTIST|ALBUM|TRACK|DURATION|GENRE|FILEPATH|IMAGE_PATH
-Numb, But I Still Feel It|Title Fight|Floral Green|1|182|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Numb, But I Still Feel It (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Leaf|Title Fight|Floral Green|2|153|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Leaf (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Like A Ritual|Title Fight|Floral Green|3|189|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Like A Ritual (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Secret Society|Title Fight|Floral Green|4|190|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Secret Society (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Make You Cry|Title Fight|Floral Green|6|173|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Make You Cry (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Sympathy|Title Fight|Floral Green|7|171|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Sympathy (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Frown|Title Fight|Floral Green|8|139|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Frown (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Calloused|Title Fight|Floral Green|9|121|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Calloused (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Lefty|Title Fight|Floral Green|10|240|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Lefty (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-In-Between|Title Fight|Floral Green|11|173|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - In-Between (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Head In The Ceiling Fan|Title Fight|Floral Green|5|213|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Head In The Ceiling Fan - Title Fight.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg
-Airbag|Radiohead|OK Computer|1|287|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Airbag - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Paranoid Android|Radiohead|OK Computer|2|386|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Paranoid Android - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Subterranean Homesick Alien|Radiohead|OK Computer|3|267|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Subterranean Homesick Alien - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Exit Music (For A Film)|Radiohead|OK Computer|4|266|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Exit Music (For A Film) - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Let Down|Radiohead|OK Computer|5|299|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Let Down - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Karma Police|Radiohead|OK Computer|6|263|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Karma Police - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Fitter Happier|Radiohead|OK Computer|7|117|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Fitter Happier - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Electioneering|Radiohead|OK Computer|8|230|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Electioneering - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Climbing Up the Walls|Radiohead|OK Computer|9|284|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Climbing Up the Walls - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-No Surprises|Radiohead|OK Computer|10|228|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/No Surprises - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-Lucky|Radiohead|OK Computer|11|258|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Lucky - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
-The Tourist|Radiohead|OK Computer|12|326|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/The Tourist - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png
+TITLE|ARTIST|ALBUM|TRACK|DURATION|GENRE|FILEPATH|IMAGE_PATH|IS_LIKED|PLAY_COUNT
+Numb, But I Still Feel It|Title Fight|Floral Green|1|182|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Numb, But I Still Feel It (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Leaf|Title Fight|Floral Green|2|153|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Leaf (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Like A Ritual|Title Fight|Floral Green|3|189|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Like A Ritual (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Secret Society|Title Fight|Floral Green|4|190|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Secret Society (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Make You Cry|Title Fight|Floral Green|6|173|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Make You Cry (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Sympathy|Title Fight|Floral Green|7|171|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Sympathy (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Frown|Title Fight|Floral Green|8|139|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Frown (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Calloused|Title Fight|Floral Green|9|121|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Calloused (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Lefty|Title Fight|Floral Green|10|240|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Lefty (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+In-Between|Title Fight|Floral Green|11|173|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - In-Between (Official Audio) - SideOneDummy.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Head In The Ceiling Fan|Title Fight|Floral Green|5|213|Hardcore|C:/Users/rajendra/Documents/Floral Green/Title Fight - Head In The Ceiling Fan - Title Fight.mp3|C:/Users/rajendra/Documents/Floral_Green.jpg|False|0
+Airbag|Radiohead|OK Computer|1|287|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Airbag - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Paranoid Android|Radiohead|OK Computer|2|386|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Paranoid Android - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|1
+Subterranean Homesick Alien|Radiohead|OK Computer|3|267|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Subterranean Homesick Alien - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|True|0
+Exit Music (For A Film)|Radiohead|OK Computer|4|266|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Exit Music (For A Film) - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Let Down|Radiohead|OK Computer|5|299|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Let Down - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Karma Police|Radiohead|OK Computer|6|263|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Karma Police - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Fitter Happier|Radiohead|OK Computer|7|117|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Fitter Happier - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Electioneering|Radiohead|OK Computer|8|230|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Electioneering - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Climbing Up the Walls|Radiohead|OK Computer|9|284|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Climbing Up the Walls - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+No Surprises|Radiohead|OK Computer|10|228|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/No Surprises - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+Lucky|Radiohead|OK Computer|11|258|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/Lucky - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
+The Tourist|Radiohead|OK Computer|12|326|Alternative Rock|C:/Users/rajendra/Documents/OK Computer/The Tourist - Radiohead.mp3|C:/Users/rajendra/Documents/Radioheadokcomputer.png|False|0
