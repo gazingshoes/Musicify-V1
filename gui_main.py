@@ -302,6 +302,8 @@ class MusicifyApp(tk.Tk):
         
         self.font_title = font.Font(family="Segoe UI", size=9, weight="bold")
         self.font_artist = font.Font(family="Segoe UI", size=8)
+        
+        self.autoplay_var = tk.BooleanVar(value=True)
 
         self.setup_ui()
         self.show_all_songs_view()
@@ -457,6 +459,16 @@ class MusicifyApp(tk.Tk):
         right = tk.Frame(bottom, bg=PLAYER_BG)
         right.grid(row=0, column=2, sticky="e", padx=30)
 
+        # Autoplay Toggle
+        chk_auto = tk.Checkbutton(right, text="Autoplay", variable=self.autoplay_var, 
+                                  bg=PLAYER_BG, fg=TEXT_COLOR, 
+                                  activebackground=PLAYER_BG, activeforeground=WHITE,
+                                  selectcolor=PLAYER_BG, font=("Segoe UI", 9))
+        chk_auto.pack(side="left", padx=(0, 15))
+        # -------------------------
+
+        self.ico_vol = self.load_icon("assets/volume.png", (20, 20), bg_color=PLAYER_BG)
+
         tk.Label(right, text="Volume", bg=PLAYER_BG, fg=TEXT_COLOR, font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
 
         # 1. Volume Icon
@@ -566,6 +578,18 @@ class MusicifyApp(tk.Tk):
             random.shuffle(shuffled)
             self.player.play_list(shuffled)
 
+    def sort_by(self, key):
+        # Sort the current list based on the key
+        if key == "title":
+            self.current_view_songs.sort(key=lambda s: s.title.lower())
+        elif key == "album":
+            self.current_view_songs.sort(key=lambda s: s.album.lower())
+        elif key == "duration":
+            self.current_view_songs.sort(key=lambda s: s.duration, reverse=True) # Longest first
+            
+        # Refresh the screen
+        self.refresh_list(self.current_view_songs, is_album=self.is_album_view)
+
     def refresh_list(self, songs, is_album=False):
         self.view_mode = "list"
         self.album_cards = []
@@ -584,9 +608,20 @@ class MusicifyApp(tk.Tk):
             lbl_art = tk.Label(self.sticky_header, image=self.header_ph, bg=CONTENT_BG, bd=0)
             lbl_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
             
-            tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
-            tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=2, sticky="w", pady=10)
-            tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font).grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
+            # TITLE Header
+            lbl_t = tk.Label(self.sticky_header, text="TITLE", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
+            lbl_t.grid(row=0, column=1, sticky="w", pady=10, padx=(10, 0))
+            lbl_t.bind("<Button-1>", lambda e: self.sort_by("title"))
+
+            # ALBUM Header
+            lbl_a = tk.Label(self.sticky_header, text="ALBUM", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
+            lbl_a.grid(row=0, column=2, sticky="w", pady=10)
+            lbl_a.bind("<Button-1>", lambda e: self.sort_by("album"))
+
+            # DURATION Header
+            lbl_d = tk.Label(self.sticky_header, text="🕒", bg=CONTENT_BG, fg=TEXT_COLOR, font=h_font, cursor="hand2")
+            lbl_d.grid(row=0, column=3, sticky="e", pady=10, padx=(0,10))
+            lbl_d.bind("<Button-1>", lambda e: self.sort_by("duration"))
             tk.Frame(self.sticky_header, width=SCROLLBAR_WIDTH, bg=CONTENT_BG).grid(row=0, column=4, sticky="e")
             tk.Frame(self.sticky_header, bg="#1E2A36", height=1).grid(row=1, column=0, columnspan=5, sticky="ew", pady=(0, 0))
         else:
@@ -649,15 +684,91 @@ class MusicifyApp(tk.Tk):
     def play_song_from_view(self, index):
         if 0 <= index < len(self.current_view_songs):
             song = self.current_view_songs[index]
+            
+            # --- Safety Check: Ensure file exists before playing ---
+            if not os.path.exists(song.filepath):
+                tk.messagebox.showerror("Error", f"File not found:\n{song.filepath}")
+                return
+
             self.player.play_now(song)
             self.player.clear_queue()
-            if self.is_album_view:
+            
+            # --- Autoplay Logic ---
+            if self.autoplay_var.get():
                 remaining = self.current_view_songs[index+1:]
                 for s in remaining: self.player.add_to_queue(s)
+
+    def edit_song_details(self, song):
+        # Create a popup window
+        edit_win = tk.Toplevel(self)
+        edit_win.title("Edit Song")
+        edit_win.configure(bg=SIDEBAR_BG)
+        edit_win.geometry("400x350")
+
+        # Helper to create inputs
+        fields = {}
+        labels = ["Title", "Artist", "Album", "Genre"]
+        
+        for i, label in enumerate(labels):
+            tk.Label(edit_win, text=label, bg=SIDEBAR_BG, fg=TEXT_COLOR).grid(row=i, column=0, padx=10, pady=10, sticky="e")
+            entry = tk.Entry(edit_win, bg="#22303C", fg=WHITE, insertbackground="white", relief="flat")
+            entry.grid(row=i, column=1, padx=10, pady=10, sticky="ew")
+            fields[label] = entry
+
+        # Pre-fill current values
+        fields["Title"].insert(0, song.title)
+        fields["Artist"].insert(0, song.artist)
+        fields["Album"].insert(0, song.album)
+        fields["Genre"].insert(0, song.genre)
+
+        # Save Function
+        def save_changes():
+            new_title = fields["Title"].get()
+            new_artist = fields["Artist"].get()
+            new_album = fields["Album"].get()
+            new_genre = fields["Genre"].get()
+
+            if not new_title: return
+
+            # Because the library uses Title as the unique key, we must:
+            # 1. Delete the old entry (if title changed, or just to be safe)
+            self.library.delete_song(song.title)
+            
+            # 2. Add as a "new" song with updated details (keeping track #, duration, path)
+            self.library.add_song(
+                new_title, new_artist, new_album, 
+                song.track_number, song.duration, new_genre, 
+                song.filepath, song.image_path
+            )
+            
+            save_songs_to_file(self.library)
+            
+            # Refresh UI
+            if self.view_mode == "list": self.show_all_songs_view()
+            else: self.show_albums_view()
+            
+            edit_win.destroy()
+
+        # Save Button
+        tk.Button(edit_win, text="Save Changes", command=save_changes, bg=ACCENT_COLOR, fg="black").grid(row=4, column=1, pady=20, sticky="ew")
+
+    def delete_song(self, song):
+        # Use the library's existing delete logic
+        if self.library.delete_song(song.title):
+            print(f"Deleted: {song.title}")
+            save_songs_to_file(self.library)
+            
+            # Refresh the correct view
+            if self.view_mode == "list":
+                self.show_all_songs_view()
+            else:
+                self.show_albums_view()
 
     def show_context_menu(self, event, song):
         menu = tk.Menu(self, tearoff=0, bg=PLAYER_BG, fg=WHITE, activebackground=HOVER_COLOR)
         menu.add_command(label="Add to Queue", command=lambda: self.player.add_to_queue(song))
+        menu.add_command(label="Edit", command=lambda: self.edit_song_details(song))
+        menu.add_command(label="Delete Song", command=lambda: self.delete_song(song))
         menu.post(event.x_root, event.y_root)
         
         # --- UPDATE STICKY HEADER ---
@@ -923,6 +1034,7 @@ class MusicifyApp(tk.Tk):
             self.header_canvas.itemconfig(self.btn_play_id, image=self.icon_play_big)
 
     def update_progress(self):
+        self.player.check_music_status()
         if self.player.is_playing:
             cur = self.player.get_current_position()
             self.slider.set_value(cur)
