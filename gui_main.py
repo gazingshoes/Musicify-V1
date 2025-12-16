@@ -580,7 +580,7 @@ class MusicifyApp(tk.Tk):
             h_font = ("Segoe UI", 9, "bold")
             
             # ALIGNMENT FIX: Invisible 48x48 image to force alignment
-            self.header_ph = make_round_image(None, (48,48), default_color=CONTENT_BG)
+            self.header_ph = make_round_image(None, (48,48))
             lbl_art = tk.Label(self.sticky_header, image=self.header_ph, bg=CONTENT_BG, bd=0)
             lbl_art.grid(row=0, column=0, sticky="w", pady=10, padx=(10,0))
             
@@ -624,7 +624,7 @@ class MusicifyApp(tk.Tk):
                     lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
                     lbl.bind("<Button-1>", cmd); lbl.bind("<Enter>", on_ent); lbl.bind("<Leave>", on_lve); lbl.bind("<Button-3>", r_click)
                 else:
-                    ph = make_round_image(None, (48,48), bg_color=CONTENT_BG)
+                    ph = make_round_image(None, (48,48))
                     self.image_refs[f"s{i}_ph"] = ph
                     lbl = tk.Label(frame, image=ph, bg=CONTENT_BG, bd=0)
                     lbl.grid(row=r, column=0, sticky="w", pady=5, padx=(10,0))
@@ -659,12 +659,6 @@ class MusicifyApp(tk.Tk):
         menu = tk.Menu(self, tearoff=0, bg=PLAYER_BG, fg=WHITE, activebackground=HOVER_COLOR)
         menu.add_command(label="Add to Queue", command=lambda: self.player.add_to_queue(song))
         menu.post(event.x_root, event.y_root)
-
-    def refresh_list(self, songs, is_album=False):
-        self.view_mode = "list"
-        self.album_cards = []
-        self.is_album_view = is_album 
-        self.current_view_songs = songs
         
         # --- UPDATE STICKY HEADER ---
         for w in self.sticky_header.winfo_children(): w.destroy()
